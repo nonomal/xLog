@@ -1,8 +1,8 @@
 import { cn } from "~/lib/utils"
 import { useRouter } from "next/router"
-import React, { useEffect } from "react"
+import React, { useEffect, useState } from "react"
 
-import { DISCORD_LINK, APP_NAME } from "~/lib/env"
+import { DISCORD_LINK, APP_NAME, OUR_DOMAIN, SITE_URL } from "~/lib/env"
 import { getSiteLink } from "~/lib/helpers"
 import { SEOHead } from "../common/SEOHead"
 import { UniLink } from "../ui/UniLink"
@@ -22,6 +22,7 @@ import { useTranslation } from "react-i18next"
 import { Logo } from "~/components/common/Logo"
 import { getStorage } from "~/lib/storage"
 import { useGetPagesBySite } from "~/queries/page"
+import { IS_PROD } from "~/lib/constants"
 
 export function DashboardLayout({
   children,
@@ -72,6 +73,7 @@ export function DashboardLayout({
   })
   const [isEventsAllRead, setIsEventsAllRead] = React.useState(true)
   const latestEventRead = getStorage("latestEventRead")?.value || 0
+
   useEffect(() => {
     if (pages.isSuccess) {
       if (
@@ -84,6 +86,25 @@ export function DashboardLayout({
       }
     }
   }, [pages.isSuccess, pages.data?.pages, latestEventRead])
+
+  const [css, setCss] = useState<string | null>(null)
+  const [isPreviewCss, setPreviewCss] = useState<boolean>(false)
+
+  useEffect(() => {
+    if (site.data) {
+      // Check if is in css preview mode
+      const cssStatus = getStorage("css")
+      if (cssStatus?.isPreview) {
+        // Is in preview mode, load cached css
+        setCss(cssStatus.css || null)
+        setPreviewCss(true)
+      } else {
+        // Not in preview mode, load site settings
+        setCss(site?.data?.css || null)
+        setPreviewCss(false)
+      }
+    }
+  }, [site, getStorage])
 
   const links: {
     href?: string
@@ -158,13 +179,13 @@ export function DashboardLayout({
     hasPermission ? (
       <>
         <SEOHead title={t(title) || ""} siteName={APP_NAME} />
-        {site?.data?.css && (
+        {css && (
           <link
             type="text/css"
             rel="stylesheet"
             href={
               "data:text/css;base64," +
-              Buffer.from(toGateway(site.data.css)).toString("base64")
+              Buffer.from(toGateway(css)).toString("base64")
             }
           />
         )}

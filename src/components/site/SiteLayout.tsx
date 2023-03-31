@@ -1,4 +1,4 @@
-import React, { useEffect } from "react"
+import React, { useEffect, useState } from "react"
 import { getUserContentsUrl } from "~/lib/user-contents"
 import { SEOHead } from "../common/SEOHead"
 import { SiteFooter } from "./SiteFooter"
@@ -15,6 +15,7 @@ import { useGetSubscription } from "~/queries/site"
 import { cn } from "~/lib/utils"
 import { useCheckLike, useCheckMint } from "~/queries/page"
 import { useAccountState } from "@crossbell/connect-kit"
+import { getStorage } from "~/lib/storage"
 
 export type SiteLayoutProps = {
   children: React.ReactNode
@@ -52,6 +53,9 @@ export const SiteLayout: React.FC<SiteLayoutProps> = ({
   const [{ isLiked }] = useCheckLike({ pageId: page.data?.id })
   const isMint = useCheckMint(page.data?.id)
 
+  const [css, setCss] = useState<string | null>(null)
+  const [isPreviewCss, setPreviewCss] = useState<boolean>(false)
+
   useEffect(() => {
     if (site.data) {
       if (
@@ -61,8 +65,20 @@ export const SiteLayout: React.FC<SiteLayoutProps> = ({
       ) {
         window.location.href = SITE_URL
       }
+
+      // Check if is in css preview mode
+      const cssStatus = getStorage("css")
+      if (cssStatus?.isPreview) {
+        // Is in preview mode, load cached css
+        setCss(cssStatus.css || null)
+        setPreviewCss(true)
+      } else {
+        // Not in preview mode, load site settings
+        setCss(site?.data?.css || null)
+        setPreviewCss(false)
+      }
     }
-  }, [site.isSuccess, site.data])
+  }, [site.isSuccess, site.data, getStorage])
 
   return (
     <div
@@ -90,13 +106,13 @@ export const SiteLayout: React.FC<SiteLayoutProps> = ({
         icon={getUserContentsUrl(site.data?.avatars?.[0])}
         site={domainOrSubdomain}
       />
-      {site?.data?.css && (
+      {css && (
         <link
           type="text/css"
           rel="stylesheet"
           href={
             "data:text/css;base64," +
-            Buffer.from(toGateway(site.data.css)).toString("base64")
+            Buffer.from(toGateway(css)).toString("base64")
           }
         />
       )}

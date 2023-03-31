@@ -12,6 +12,8 @@ import { useTranslation } from "next-i18next"
 import { getServerSideProps as getLayoutServerSideProps } from "~/components/dashboard/DashboardLayout.server"
 import { GetServerSideProps } from "next"
 import { serverSidePropsHandler } from "~/lib/server-side-props"
+import { setStorage, getStorage } from "~/lib/storage"
+import { getSiteLink } from "~/lib/helpers"
 
 export const getServerSideProps: GetServerSideProps = serverSidePropsHandler(
   async (ctx) => {
@@ -40,6 +42,34 @@ export default function SettingsCSSPage() {
       site: subdomain,
       css: css,
     })
+    setStorage("css", {
+      isPreview: false,
+    })
+  }
+
+  const resetCSS = () => {
+    // Save state in storage
+    setStorage("css", {
+      isPreview: false,
+    })
+    // Reload page
+    // TODO: Find a better method
+    router.reload()
+  }
+
+  const previewCSS = () => {
+    // Save state in storage
+    setStorage("css", {
+      isPreview: true,
+      css: css,
+    })
+    // Open new preview page
+    window.open(
+      getSiteLink({
+        subdomain,
+      }),
+      "_blank",
+    )
   }
 
   useEffect(() => {
@@ -56,11 +86,20 @@ export default function SettingsCSSPage() {
 
   const [hasSet, setHasSet] = useState(false)
   useEffect(() => {
-    if (site.isSuccess && site.data && !css && !hasSet) {
-      setCss(site.data.css || "")
-      setHasSet(true)
+    if (!hasSet) {
+      // Try to detect if is in preview mode
+      const cssStatus = getStorage("css")
+      if (cssStatus?.isPreview) {
+        // Is in preview mode, load cached css
+        setCss(cssStatus.css || "")
+        setHasSet(true)
+      } else if (site.isSuccess && site.data && !css) {
+        // Not in preview mode, load site settings
+        setCss(site.data.css || "")
+        setHasSet(true)
+      }
     }
-  }, [site.data, site.isSuccess, css, hasSet])
+  }, [site.data, site.isSuccess, css, hasSet, getStorage])
 
   return (
     <SettingsLayout title={"Site Settings"} type="site">
@@ -116,7 +155,21 @@ export default function SettingsCSSPage() {
             }}
           />
         </div>
-        <div className="mt-5">
+        <div className="mt-5 flex space-x-3">
+          <Button
+            variant="secondary"
+            onClick={resetCSS}
+            isLoading={updateSite.isLoading}
+          >
+            {t("Reset")}
+          </Button>
+          <Button
+            variant="secondary"
+            onClick={previewCSS}
+            isLoading={updateSite.isLoading}
+          >
+            {t("Preview")}
+          </Button>
           <Button type="submit" isLoading={updateSite.isLoading}>
             {t("Save")}
           </Button>

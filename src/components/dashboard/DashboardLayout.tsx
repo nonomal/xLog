@@ -105,7 +105,7 @@ export function DashboardLayout({
         setPreviewCss(false)
       }
     }
-  }, [site, getStorage])
+  }, [site.data])
 
   const links: {
     href?: string
@@ -190,8 +190,8 @@ export function DashboardLayout({
             }
           />
         )}
-        <div className="flex flex-col h-screen">
-          {isPreviewCss && <PreviewCSSBanner />}
+        {isPreviewCss && <PreviewCSSBanner />}
+        <div className="flex h-screen">
           <DashboardSidebar>
             {(isOpen) => (
               <>

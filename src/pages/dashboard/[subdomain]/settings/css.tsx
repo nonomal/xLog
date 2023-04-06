@@ -53,7 +53,7 @@ export default function SettingsCSSPage() {
       isPreview: false,
     })
     // Reload page
-    // TODO: Find a better method to update textbox
+    // TODO: Find a better method to update CSS input box
     router.reload()
   }
 
@@ -64,12 +64,16 @@ export default function SettingsCSSPage() {
       css: css,
     })
     // Open new preview page
+    // TODO: Fix cross-domain issue
     window.open(
       getSiteLink({
         subdomain,
       }),
       "_blank",
     )
+    // Reload page
+    // TODO: Find a better method to apply new CSS
+    router.reload()
   }
 
   useEffect(() => {

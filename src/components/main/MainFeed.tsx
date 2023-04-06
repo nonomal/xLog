@@ -26,7 +26,8 @@ const Post = ({
   const date = useDate()
 
   if (
-    post.metadata?.content?.score?.number &&
+    filtering &&
+    post.metadata?.content?.score?.number !== undefined &&
     post.metadata.content.score.number <= filtering
   ) {
     return null
@@ -86,10 +87,10 @@ const Post = ({
               <span className="xlog-post-tags space-x-1 truncate min-w-0">
                 {post.metadata?.content?.tags
                   ?.filter((tag) => tag !== "post" && tag !== "page")
-                  .map((tag) => (
+                  .map((tag, index) => (
                     <span
                       className="hover:text-zinc-600"
-                      key={tag}
+                      key={tag + index}
                       onClick={(e) => {
                         e.preventDefault()
                         router.push(`/tag/${tag}`)
@@ -127,8 +128,9 @@ const Post = ({
 }
 
 export const MainFeed: React.FC<{
-  type?: "latest" | "recommend" | "following"
-}> = ({ type }) => {
+  type?: "latest" | "recommend" | "following" | "topic"
+  noteIds?: string[]
+}> = ({ type, noteIds }) => {
   const { t } = useTranslation(["common", "site"])
 
   const currentCharacterId = useAccountState(
@@ -138,19 +140,15 @@ export const MainFeed: React.FC<{
   const feed = useGetFeed({
     type: type,
     characterId: currentCharacterId,
+    noteIds: noteIds,
   })
 
   const hasFiltering = type === "latest"
 
   const [aiFiltering, setAiFiltering] = useState(false)
-  const [refreshTimeout, setRefreshTimeout] = useState(false)
 
   useEffect(() => {
     setAiFiltering(getStorage("ai_filtering")?.enabled || false)
-
-    setTimeout(() => {
-      setRefreshTimeout(true)
-    }, 5000)
   }, [])
 
   return (
@@ -201,9 +199,6 @@ export const MainFeed: React.FC<{
               />
             </Switch>
           </div>
-        )}
-        {feed.isRefetching && !refreshTimeout && (
-          <div className="text-center text-zinc-600">{t("Refreshing")}...</div>
         )}
         {feed.isLoading ? (
           <div className="text-center text-zinc-600">{t("Loading")}...</div>

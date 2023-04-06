@@ -23,6 +23,7 @@ import { Logo } from "~/components/common/Logo"
 import { getStorage } from "~/lib/storage"
 import { useGetPagesBySite } from "~/queries/page"
 import { IS_PROD } from "~/lib/constants"
+import PreviewCSSBanner from "~/components/common/PreviewCSSBanner"
 
 export function DashboardLayout({
   children,
@@ -189,7 +190,8 @@ export function DashboardLayout({
             }
           />
         )}
-        <div className="flex h-screen">
+        <div className="flex flex-col h-screen">
+          {isPreviewCss && <PreviewCSSBanner />}
           <DashboardSidebar>
             {(isOpen) => (
               <>

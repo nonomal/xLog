@@ -53,7 +53,7 @@ export default function SettingsCSSPage() {
       isPreview: false,
     })
     // Reload page
-    // TODO: Find a better method
+    // TODO: Find a better method to update textbox
     router.reload()
   }
 

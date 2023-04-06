@@ -16,6 +16,7 @@ import { cn } from "~/lib/utils"
 import { useCheckLike, useCheckMint } from "~/queries/page"
 import { useAccountState } from "@crossbell/connect-kit"
 import { getStorage } from "~/lib/storage"
+import PreviewCSSBanner from "~/components/common/PreviewCSSBanner"
 
 export type SiteLayoutProps = {
   children: React.ReactNode
@@ -116,6 +117,7 @@ export const SiteLayout: React.FC<SiteLayoutProps> = ({
           }
         />
       )}
+      {isPreviewCss && <PreviewCSSBanner />}
       {site.data && <SiteHeader site={site.data} />}
       <div
         className={`xlog-post-id-${page.data?.id} max-w-screen-md mx-auto px-5 pt-12 relative`}

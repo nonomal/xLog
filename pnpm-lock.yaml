@@ -20,8 +20,8 @@ dependencies:
     specifier: 0.0.63
     version: 0.0.63(@tanstack/react-query@4.29.1)(@types/react@18.0.34)(ethers@5.7.2)(react-dom@18.2.0)(typescript@5.0.4)(wagmi@0.12.10)
   '@crossbell/contract':
-    specifier: 0.0.63
-    version: 0.0.63(ethers@5.7.2)(react-dom@18.2.0)(react@18.2.0)(wagmi@0.12.10)
+    specifier: 0.0.64
+    version: 0.0.64(ethers@5.7.2)(react-dom@18.2.0)(react@18.2.0)(wagmi@0.12.10)
   '@crossbell/indexer':
     specifier: 0.0.63
     version: 0.0.63(ethers@5.7.2)(react-dom@18.2.0)(react@18.2.0)(wagmi@0.12.10)
@@ -1834,8 +1834,51 @@ packages:
       - utf-8-validate
     dev: false
 
+  /@crossbell/contract@0.0.64(ethers@5.7.2)(react-dom@18.2.0)(react@18.2.0)(wagmi@0.12.10):
+    resolution: {integrity: sha512-GJEFQ4Bhhw9n034w7Q+oKASQwQ5odfnalV3NSHTlrugs4cPg9UAk+VXfAAx322WhGUu5crYeqVPg89iZSBWEYg==}
+    peerDependencies:
+      ethers: ^5
+      react: ^18
+      wagmi: ^0.12
+    dependencies:
+      '@crossbell/indexer': 0.0.64(ethers@5.7.2)(react-dom@18.2.0)(react@18.2.0)(wagmi@0.12.10)
+      '@crossbell/util-hooks': 0.0.64(react-dom@18.2.0)(react@18.2.0)
+      crossbell.js: 0.19.7
+      ethers: 5.7.2
+      react: 18.2.0
+      wagmi: 0.12.10(@babel/core@7.21.4)(@types/node@18.15.11)(ethers@5.7.2)(immer@9.0.21)(react-dom@18.2.0)(react@18.2.0)(typescript@5.0.4)
+    transitivePeerDependencies:
+      - bufferutil
+      - react-dom
+      - react-native
+      - supports-color
+      - utf-8-validate
+    dev: false
+
   /@crossbell/indexer@0.0.63(ethers@5.7.2)(react-dom@18.2.0)(react@18.2.0)(wagmi@0.12.10):
     resolution: {integrity: sha512-beN6iH6en+nb7HFDu0rle7zlGCIg7xrDcz6OZ9S8JsPcUHJEx05LAE442LTFGkZblec0iFFdgdjQQItsvAVxNg==}
+    peerDependencies:
+      ethers: ^5
+      wagmi: ^0.12
+    dependencies:
+      '@tanstack/react-query': 4.29.1(react-dom@18.2.0)(react@18.2.0)
+      crossbell.js: 0.19.7
+      dayjs: 1.11.7
+      ethers: 5.7.2
+      lodash.compact: 3.0.1
+      lru-cache: 8.0.4
+      wagmi: 0.12.10(@babel/core@7.21.4)(@types/node@18.15.11)(ethers@5.7.2)(immer@9.0.21)(react-dom@18.2.0)(react@18.2.0)(typescript@5.0.4)
+    transitivePeerDependencies:
+      - bufferutil
+      - react
+      - react-dom
+      - react-native
+      - supports-color
+      - utf-8-validate
+    dev: false
+
+  /@crossbell/indexer@0.0.64(ethers@5.7.2)(react-dom@18.2.0)(react@18.2.0)(wagmi@0.12.10):
+    resolution: {integrity: sha512-hgnYP0Ir+8mw5VY/UEEMNkWZrcl9sM5xBm83oycRVAVZj3wqorqDkM2XKxYtVZzkUJTRmJImym/STuUUJO+AuA==}
     peerDependencies:
       ethers: ^5
       wagmi: ^0.12
@@ -1931,6 +1974,22 @@ packages:
 
   /@crossbell/util-hooks@0.0.63(react-dom@18.2.0)(react@18.2.0):
     resolution: {integrity: sha512-VPjiXI0/Lnp4JnFiYtjz43e31jlShuoT61F/pjT8rvHQicCqgXxKKee+Rw7ZRU1wgWRCjqlaESE1XYWhjDkySA==}
+    peerDependencies:
+      react: ^18
+    dependencies:
+      '@tanstack/react-query': 4.29.1(react-dom@18.2.0)(react@18.2.0)
+      crossbell.js: 0.19.7
+      react: 18.2.0
+    transitivePeerDependencies:
+      - bufferutil
+      - react-dom
+      - react-native
+      - supports-color
+      - utf-8-validate
+    dev: false
+
+  /@crossbell/util-hooks@0.0.64(react-dom@18.2.0)(react@18.2.0):
+    resolution: {integrity: sha512-tOTIajzkWesycAON4oeB66jQeNszGgSvfuQThMYjXZXX7yHDPHLCMwgpgoglLFQe1iORgCOv3OIwkiwpmxxKiQ==}
     peerDependencies:
       react: ^18
     dependencies:

@@ -31,7 +31,7 @@
     "@codemirror/view": "6.9.4",
     "@crossbell/connect-kit": "0.0.63",
     "@crossbell/contract": "0.0.63",
-    "@crossbell/indexer": "0.0.63",
+    "@crossbell/indexer": "0.0.64",
     "@crossbell/notification": "0.0.63",
     "@crossbell/ui": "0.0.63",
     "@crossbell/util-hooks": "0.0.63",

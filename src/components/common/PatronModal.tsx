@@ -1,33 +1,73 @@
-import { Button } from "~/components/ui/Button"
-import { Note, Profile } from "~/lib/types"
-import { useTranslation } from "next-i18next"
-import { Modal } from "~/components/ui/Modal"
-import { useEffect, useRef, useState } from "react"
-import { BoxRadio } from "~/components/ui/BoxRadio"
-import { Tabs } from "../ui/Tabs"
-import { useTipCharacter, useGetTips } from "~/queries/site"
-import { useAccountState, useConnectModal } from "@crossbell/connect-kit"
-import { toast } from "react-hot-toast"
 import confetti from "canvas-confetti"
-import { Avatar } from "~/components/ui/Avatar"
-import { CharacterFloatCard } from "./CharacterFloatCard"
-import { UniLink } from "../ui/UniLink"
-import { getSiteLink } from "~/lib/helpers"
-import { CSB_SCAN, MIRA_LINK } from "~/lib/env"
-import { parsePageId } from "~/models/page.model"
+import { useTranslations } from "next-intl"
+import { useEffect, useRef, useState } from "react"
+import { toast } from "react-hot-toast"
 
-export const PatronModal: React.FC<{
-  site: Profile | undefined | null
-  page?: Note | null
-  open: boolean
-  setOpen: (open: boolean) => void
-}> = ({ site, page, open, setOpen }) => {
-  const { t } = useTranslation("common")
+import { useConnectModal } from "@crossbell/connect-kit"
+
+import { Avatar } from "~/components/ui/Avatar"
+import { BoxRadio } from "~/components/ui/BoxRadio"
+import { Button } from "~/components/ui/Button"
+import { CSB_SCAN, MIRA_LINK } from "~/lib/env"
+import { getSiteLink } from "~/lib/helpers"
+import { ExpandedCharacter, ExpandedNote } from "~/lib/types"
+import { useGetTips, useTipCharacter } from "~/queries/site"
+
+import { ModalContentProps, useModalStack } from "../ui/ModalStack"
+import { Tabs } from "../ui/Tabs"
+import { UniLink } from "../ui/UniLink"
+import { CharacterFloatCard } from "./CharacterFloatCard"
+import { Loading } from "./Loading"
+
+export const usePatronModal = () => {
+  const { present } = useModalStack()
+  const t = useTranslations()
+  return (site?: ExpandedCharacter, page?: ExpandedNote) => {
+    const title =
+      (page
+        ? t("Tip the post: {name}", {
+            name: page.metadata?.content?.title,
+          })
+        : t("Become a patron of {name}", {
+            name: site?.metadata?.content?.name,
+          })) || ""
+
+    present({
+      title: (
+        <span className="inline-flex items-center justify-center w-full space-x-1">
+          <span className="text-red-500 flex size-6 -mb-px">
+            <i className="i-mingcute-heart-fill text-2xl -mb-px" />
+          </span>
+          <span className="truncate">{title}</span>
+        </span>
+      ),
+      content: (props) => <PatronModal {...props} page={page} site={site} />,
+      modalProps: {
+        size: "lg",
+      },
+    })
+  }
+}
+const PatronModal = ({
+  site,
+  page,
+  dismiss,
+}: ModalContentProps<{
+  site?: ExpandedCharacter
+  page?: ExpandedNote
+}>) => {
+  const t = useTranslations()
   const tipCharacter = useTipCharacter()
-  const tips = useGetTips({
-    toCharacterId: site?.metadata?.proof,
-    toNoteId: parsePageId(page?.id || "").noteId,
-  })
+  const tips = useGetTips(
+    page
+      ? {
+          toCharacterId: page?.characterId,
+          toNoteId: page?.noteId,
+        }
+      : {
+          toCharacterId: site?.characterId,
+        },
+  )
   const connectModal = useConnectModal()
 
   const radios = [
@@ -58,20 +98,15 @@ export const PatronModal: React.FC<{
 
   const [value, setValue] = useState(radios[1].value!)
 
-  const currentCharacterId = useAccountState(
-    (s) => s.computed.account?.characterId,
-  )
-
   const submit = () => {
-    if (currentCharacterId && site?.metadata?.proof && parseInt(value)) {
+    if (site?.characterId && parseInt(value)) {
       tipCharacter.mutate({
-        fromCharacterId: currentCharacterId,
-        toCharacterId: site?.metadata?.proof,
+        characterId: site?.characterId,
         amount: parseInt(value),
-        noteId: parsePageId(page?.id || "").noteId,
+        noteId: page?.noteId,
       })
     } else {
-      setOpen(false)
+      dismiss()
       connectModal.show()
     }
   }
@@ -97,7 +132,7 @@ export const PatronModal: React.FC<{
         tipCharacter.reset()
       }
     }
-  }, [tipCharacter.isSuccess, t, site?.name])
+  }, [tipCharacter.isSuccess, t])
 
   useEffect(() => {
     if (tipCharacter.isError) {
@@ -108,43 +143,35 @@ export const PatronModal: React.FC<{
 
   const title =
     (page
-      ? t("Tip the post: {{name}}", {
-          name: page.title,
+      ? t("Tip the post: {name}", {
+          name: page.metadata?.content?.title,
         })
-      : t("Become a patron of {{name}}", {
-          name: site?.name,
+      : t("Become a patron of {name}", {
+          name: site?.metadata?.content?.name,
         })) || ""
 
   return (
-    <Modal
-      open={open}
-      setOpen={setOpen}
-      title={
-        <span className="inline-flex items-center justify-center w-full space-x-1">
-          <span className="text-red-500 flex w-6 h-6 -mb-[1px]">
-            <i className="i-mingcute:heart-fill text-2xl -mb-[1px]" />
-          </span>
-          <span className="truncate">{title}</span>
-        </span>
-      }
-      size="lg"
-    >
+    <>
       <div className="px-5 py-4 space-y-4 text-center">
         <div className="space-y-1">
           <span className="flex items-center justify-center">
-            <Avatar images={site?.avatars || []} name={site?.name} size={100} />
+            <Avatar
+              cid={site?.characterId}
+              images={site?.metadata?.content?.avatars || []}
+              name={site?.metadata?.content?.name}
+              size={100}
+            />
           </span>
           <span className="block">
             <span className="font-bold text-lg text-zinc-800">
-              {site?.name}
+              {site?.metadata?.content?.name}
             </span>
-            <span className="ml-1 text-gray-600">@{site?.username}</span>
+            <span className="ml-1 text-gray-600">@{site?.handle}</span>
           </span>
-          {site?.description && (
-            <span
-              className="block text-gray-600 text-sm"
-              dangerouslySetInnerHTML={{ __html: site?.description || "" }}
-            ></span>
+          {site?.metadata?.content?.bio && (
+            <span className="text-gray-600 text-sm line-clamp-4">
+              {site?.metadata?.content?.bio}
+            </span>
           )}
         </div>
         <div>
@@ -153,7 +180,7 @@ export const PatronModal: React.FC<{
           </div>
           <div className="text-zinc-500 text-sm mt-2">
             {tips.isLoading ? (
-              "Loading..."
+              <Loading />
             ) : tips.data?.pages?.[0]?.list?.length ? (
               <>
                 <ul className="flex items-center justify-center">
@@ -170,6 +197,7 @@ export const PatronModal: React.FC<{
                             })}
                           >
                             <Avatar
+                              cid={tip.character?.characterId}
                               className="relative align-middle border-2 border-white"
                               images={
                                 tip.character?.metadata?.content?.avatars || []
@@ -192,7 +220,7 @@ export const PatronModal: React.FC<{
                   ))}
                   {tips.data.pages?.[0]?.count > 7 && (
                     <li className="inline-flex justify-center w-[12.5%] h-[70px]">
-                      <div className="relative align-middle w-[50px] h-[50px] rounded-full inline-flex bg-gray-100 items-center justify-center text-gray-400 font-medium">
+                      <div className="relative align-middle size-[50px] rounded-full inline-flex bg-gray-100 items-center justify-center text-gray-400 font-medium">
                         +{tips.data.pages?.[0]?.count - 7}
                       </div>
                     </li>
@@ -202,8 +230,8 @@ export const PatronModal: React.FC<{
             ) : (
               t(
                 page
-                  ? "You are here to be the first tipper."
-                  : "You are here to be the first patron.",
+                  ? "You are here to be the first tipper"
+                  : "You are here to be the first patron",
               )
             )}
           </div>
@@ -222,16 +250,15 @@ export const PatronModal: React.FC<{
                   tooltip: t("Coming soon") || "",
                 },
               ]}
-              className="justify-center"
+              className="justify-center overflow-visible"
             ></Tabs>
           </div>
           <div>
             <BoxRadio items={radios} value={value} setValue={setValue} />
           </div>
           <div className="text-zinc-500 text-xs space-y-1 mt-2">
-            <p>1 MIRA ≈ 1 USDC</p>
             <p className="flex items-center justify-center">
-              <i className="i-mingcute:question-line mr-1 text-sm" />
+              <i className="i-mingcute-question-line mr-1 text-sm" />
               <UniLink href={MIRA_LINK}>
                 {t("What is MIRA? Where can I get some?")}
               </UniLink>
@@ -253,6 +280,6 @@ export const PatronModal: React.FC<{
           </Button>
         </div>
       </div>
-    </Modal>
+    </>
   )
 }

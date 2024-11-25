@@ -1,10 +1,14 @@
-import { cn } from "~/lib/utils"
 import React from "react"
 
-export const Badge: React.FC<{
+import { cn } from "~/lib/utils"
+
+export const Badge = ({
+  children,
+  className,
+}: {
   children: React.ReactNode
   className?: string
-}> = ({ children, className }) => {
+}) => {
   return (
     <span
       className={cn(

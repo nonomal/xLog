@@ -1,23 +1,16 @@
-import { useEffect, useState } from "react"
-import { Avatar } from "~/components/ui/Avatar"
+import { useTranslations } from "next-intl"
+
 import { FollowingButton } from "~/components/common/FollowingButton"
 import { FollowingCount } from "~/components/common/FollowingCount"
-import * as siteModel from "~/models/site.model"
-import type { Profile } from "~/lib/types"
-import { cn } from "~/lib/utils"
-import { useDate } from "~/hooks/useDate"
-import { useTranslation } from "next-i18next"
 import { Titles } from "~/components/common/Titles"
+import { Avatar } from "~/components/ui/Avatar"
+import { Skeleton } from "~/components/ui/Skeleton"
+import { useDate } from "~/hooks/useDate"
+import { getSiteLink } from "~/lib/helpers"
+import { cn } from "~/lib/utils"
+import { useGetCharacterCard } from "~/queries/site"
 
-export const CharacterCard: React.FC<{
-  siteId?: string
-  address?: string
-  open?: boolean
-  setButtonLoading?: (loading: boolean) => void
-  hideFollowButton?: boolean
-  simple?: boolean
-  style?: "flat" | "normal"
-}> = ({
+export const CharacterCard = ({
   siteId,
   address,
   open,
@@ -25,28 +18,23 @@ export const CharacterCard: React.FC<{
   hideFollowButton,
   simple,
   style,
+}: {
+  siteId?: string
+  address?: string
+  open?: boolean
+  setButtonLoading?: (loading: boolean) => void
+  hideFollowButton?: boolean
+  simple?: boolean
+  style?: "flat" | "normal"
 }) => {
-  const [firstOpen, setFirstOpen] = useState("")
-  const [site, setSite] = useState<Profile>()
   const date = useDate()
-  const { t } = useTranslation("common")
+  const t = useTranslations()
 
-  useEffect(() => {
-    if (open && (firstOpen !== (siteId || address) || !site)) {
-      if (siteId || address) {
-        setFirstOpen(siteId || address || "")
-        if (siteId) {
-          siteModel.getSite(siteId).then((site) => setSite(site))
-        } else if (address) {
-          siteModel
-            .getUserSites({ address })
-            .then((sites) => setSite(sites?.[0]))
-        }
-      } else {
-        setSite(undefined)
-      }
-    }
-  }, [open, firstOpen, siteId, address, site])
+  const { data: site } = useGetCharacterCard({
+    siteId,
+    address,
+    enabled: open || false,
+  })
 
   return (
     <span
@@ -63,7 +51,12 @@ export const CharacterCard: React.FC<{
       {site ? (
         <>
           <span className="flex items-center justify-between">
-            <Avatar images={site?.avatars || []} name={site?.name} size={45} />
+            <Avatar
+              cid={site?.characterId}
+              images={site?.metadata?.content?.avatars || []}
+              name={site?.metadata?.content?.name}
+              size={45}
+            />
             {!hideFollowButton && (
               <FollowingButton
                 site={site}
@@ -73,32 +66,42 @@ export const CharacterCard: React.FC<{
             )}
           </span>
           <span className="flex items-center space-x-1">
-            <span className="font-bold text-base text-zinc-800">
-              {site?.name}
-            </span>
-            <Titles characterId={+(site.metadata?.proof || "")} />
-            <span className="text-gray-600">@{site?.username}</span>
-          </span>
-          {site?.description && (
             <span
-              className="block text-gray-600"
-              dangerouslySetInnerHTML={{ __html: site?.description || "" }}
-            ></span>
+              className="font-bold text-base text-zinc-800 cursor-pointer hover:underline"
+              onClick={(e) => {
+                e.preventDefault()
+                window.open(
+                  `${getSiteLink({
+                    subdomain: siteId || "",
+                  })}`,
+                )
+              }}
+            >
+              {site?.metadata?.content?.name}
+            </span>
+            <Titles characterId={+(site?.characterId || "")} />
+            <span className="text-gray-600">@{site?.handle}</span>
+          </span>
+          {site?.metadata?.content?.bio && (
+            <span className="text-gray-600 line-clamp-4">
+              {site?.metadata?.content?.bio}
+            </span>
           )}
           {!simple && (
             <span className="block">
-              <FollowingCount siteId={site.username} disableList={true} />
+              <FollowingCount
+                characterId={site.characterId}
+                disableList={true}
+              />
             </span>
           )}
-          {!simple && site?.date_created && (
+          {!simple && site?.createdAt && (
             <span className="block text-gray-500">
-              <time dateTime={date.formatToISO(site.date_created)}>
+              <time dateTime={date.formatToISO(site.createdAt)}>
                 {t("joined ago", {
                   time: date.dayjs
                     .duration(
-                      date
-                        .dayjs(site.date_created)
-                        .diff(date.dayjs(), "minute"),
+                      date.dayjs(site.createdAt).diff(date.dayjs(), "minute"),
                       "minute",
                     )
                     .humanize(),
@@ -108,7 +111,15 @@ export const CharacterCard: React.FC<{
           )}
         </>
       ) : (
-        <>{t("Loading")}...</>
+        <Skeleton.Container className={cn(simple ? "space-y-1" : "space-y-2")}>
+          <div className="flex justify-between items-center">
+            <Skeleton.Circle size={40} />
+            <Skeleton.Rectangle className="h-7 w-24" />
+          </div>
+          <Skeleton.Rectangle className="w-2/3" />
+          <Skeleton.Rectangle className="my-4 w-full h-16" />
+          <Skeleton.Rectangle className="w-1/2" />
+        </Skeleton.Container>
       )}
     </span>
   )

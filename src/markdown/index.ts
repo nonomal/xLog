@@ -1,204 +1,258 @@
-import { unified } from "unified"
-import remarkParse from "remark-parse"
-import remarkRehype from "remark-rehype"
-import remarkFrontmatter from "remark-frontmatter"
-import rehypeStringify from "rehype-stringify"
-import remarkGfm from "remark-gfm"
-import rehypeSanitize from "rehype-sanitize"
-import rehypeRaw from "rehype-raw"
-import { refractor } from "refractor"
-import rehypePrismGenerator from "rehype-prism-plus/generator"
-import { rehypeImage } from "./rehype-image"
-import { rehypeTable } from "./rehype-table"
-import { remarkCallout } from "./remark-callout"
-import { rehypeExternalLink } from "./rehyper-external-link"
-import { rehypeWrapCode } from "./rehype-wrap-code"
+import type { Root as HashRoot } from "hast"
+import { toHtml } from "hast-util-to-html"
+import { toJsxRuntime, type ExtraProps } from "hast-util-to-jsx-runtime"
 import jsYaml from "js-yaml"
-import rehypeReact from "rehype-react"
-import { createElement, ReactElement } from "react"
-import { Image } from "~/components/ui/Image"
+import type { Root as MdashRoot } from "mdast"
+import { toc } from "mdast-util-toc"
+import dynamic from "next/dynamic"
+import {
+  createElement,
+  type ClassAttributes,
+  type FC,
+  type HTMLAttributes,
+} from "react"
+import { toast } from "react-hot-toast"
+import { Fragment, jsx, jsxs } from "react/jsx-runtime"
+import rehypeInferDescriptionMeta from "rehype-infer-description-meta"
+import rehypeKatex from "rehype-katex"
+import rehypeRaw from "rehype-raw"
+import rehypeSanitize from "rehype-sanitize"
+import rehypeSlug from "rehype-slug"
+import remarkBreaks from "remark-breaks"
 import remarkDirective from "remark-directive"
 import remarkDirectiveRehype from "remark-directive-rehype"
+import emoji from "remark-emoji"
+import remarkFrontmatter from "remark-frontmatter"
+import remarkGfm from "remark-gfm"
+import remarkGithubAlerts from "remark-github-alerts"
+import remarkMath from "remark-math"
+import remarkParse from "remark-parse"
+import remarkRehype from "remark-rehype"
+import type { BundledTheme } from "shiki/themes"
+import { unified } from "unified"
+import { visit } from "unist-util-visit"
+import { VFile } from "vfile"
+
+// @ts-expect-error
+import remarkCalloutDirectives from "@microflash/remark-callout-directives"
+
+import AdvancedImage from "~/components/ui/AdvancedImage"
+import { createMarkdownHeaderComponent } from "~/components/ui/MarkdownRender"
+import { isServerSide } from "~/lib/utils"
+
+import { transformers } from "./embed-transformers"
+import { rehypeEmbed } from "./rehype-embed"
+import { rehypeIpfs } from "./rehype-ipfs"
+import { rehypeMention } from "./rehype-mention"
+import { rehypeMermaid } from "./rehype-mermaid"
+import { rehypeRemoveH1 } from "./rehype-remove-h1"
+import { rehypeTable } from "./rehype-table"
+import { rehypeWrapCode } from "./rehype-wrap-code"
+import { rehypeExternalLink } from "./rehyper-external-link"
+import { remarkPangu } from "./remark-pangu"
 import { remarkYoutube } from "./remark-youtube"
 import sanitizeScheme from "./sanitize-schema"
-import rehypeSlug from "rehype-slug"
-import rehypeAutolinkHeadings from "rehype-autolink-headings"
-import { toc, Result as TocResult } from "mdast-util-toc"
-import { Element } from "react-scroll"
-import type { Root } from "hast"
-import { Mention } from "~/components/ui/Mention"
-import remarkMath from "remark-math"
-import rehypeKatex from "rehype-katex"
-import rehypeInferDescriptionMeta from "rehype-infer-description-meta"
-import remarkBreaks from "remark-breaks"
-import { remarkMermaid } from "./remark-mermaid"
-import { Mermaid } from "~/components/ui/Mermaid"
-import rehypeRewrite from "rehype-rewrite"
-import { toText } from "hast-util-to-text"
 
-export type MarkdownEnv = {
-  excerpt: string
-  frontMatter: Record<string, any>
-  __internal: Record<string, any>
-  cover: string
-  toc: TocResult | null
-  tree: Root | null
+const Style = dynamic(() => import("~/components/common/Style"))
+const Mention = dynamic(() => import("~/components/ui/Mention"))
+const Mermaid = dynamic(() => import("~/components/ui/Mermaid"))
+const Tweet = dynamic(() => import("~/components/ui/Tweet"))
+const GithubRepo = dynamic(() => import("~/components/ui/GithubRepo"))
+const XLogPost = dynamic(() => import("~/components/ui/XLogPost"))
+const APlayer = dynamic(() => import("~/components/ui/APlayer"))
+const DPlayer = dynamic(() => import("~/components/ui/DPlayer"))
+const RSS = dynamic(() => import("~/components/ui/RSS"))
+const ShikiRemark = dynamic(() => import("~/components/ui/ShikiRemark"))
+
+const HeadRenderMap = {
+  h1: createMarkdownHeaderComponent("h1"),
+  h2: createMarkdownHeaderComponent("h2"),
+  h3: createMarkdownHeaderComponent("h3"),
+  h4: createMarkdownHeaderComponent("h4"),
+  h5: createMarkdownHeaderComponent("h5"),
 }
 
-export type Rendered = {
-  contentHTML: string
-  element?: ReactElement
-  excerpt: string
-  frontMatter: Record<string, any>
-  cover: string
-  toc: TocResult | null
-  tree: Root | null
+const memoedPreComponentMap = {} as Record<string, any>
+const hashCodeThemeKey = (codeTheme?: Record<string, any>): string => {
+  if (!codeTheme) return "default"
+  return Object.values(codeTheme).join(",")
 }
 
-refractor.alias("html", ["svelte", "vue"])
-
-const rehypePrism = rehypePrismGenerator(refractor)
-
-export const renderPageContent = (
-  content: string,
-  html?: boolean,
-): Rendered => {
-  const env: MarkdownEnv = {
-    excerpt: "",
-    __internal: {},
-    frontMatter: {},
-    cover: "",
-    toc: null,
-    tree: null,
+export const renderPageContent = ({
+  content,
+  strictMode,
+  codeTheme,
+}: {
+  content: string
+  strictMode?: boolean
+  codeTheme?: {
+    light?: BundledTheme
+    dark?: BundledTheme
   }
+}) => {
+  let hastTree: HashRoot | undefined = undefined
+  let mdastTree: MdashRoot | undefined = undefined
 
-  let contentHTML = ""
-  let result: any = null
+  const file = new VFile(content)
+
   try {
-    result = unified()
+    const pipeline = unified()
       .use(remarkParse)
+      .use(remarkGithubAlerts) // make sure this is before remarkBreaks
       .use(remarkBreaks)
       .use(remarkFrontmatter, ["yaml"])
-      .use(() => (tree) => {
-        const yaml = tree.children.find((node) => node.type === "yaml")
-        if ((yaml as any)?.value) {
-          try {
-            env.frontMatter = jsYaml.load((yaml as any)?.value) as Record<
-              string,
-              any
-            >
-          } catch (e) {
-            console.error(e)
-          }
-        }
-      })
-      .use(() => (tree) => {
-        env.toc = toc(tree, { tight: true, ordered: true })
-      })
       .use(remarkGfm, {
         singleTilde: false,
       })
-      .use(remarkCallout)
       .use(remarkDirective)
       .use(remarkDirectiveRehype)
+      .use(remarkCalloutDirectives)
       .use(remarkYoutube)
-      .use(remarkMermaid)
-      .use(remarkMath)
-      .use(remarkRehype, { allowDangerousHtml: true })
-      .use(rehypeKatex) // There may be $ symbol parsing errors
-      .use(rehypeStringify)
-      .use(rehypeRaw)
-      .use(rehypeImage, { env })
-      .use(rehypeSanitize, sanitizeScheme)
-      .use(rehypePrism, {
-        ignoreMissing: true,
-        showLineNumbers: true,
+      .use(remarkMath, {
+        singleDollarTextMath: false,
       })
+      .use(remarkPangu)
+      .use(emoji)
+      .use(remarkRehype, { allowDangerousHtml: true })
+      .use(rehypeRaw)
+      .use(rehypeIpfs)
+      .use(rehypeSlug)
+
+      .use(rehypeSanitize, strictMode ? undefined : sanitizeScheme)
       .use(rehypeTable)
       .use(rehypeExternalLink)
+      .use(rehypeMermaid)
       .use(rehypeWrapCode)
       .use(rehypeInferDescriptionMeta)
-      .use(rehypeSlug)
-      .use(rehypeRewrite, {
-        selector: "p",
-        rewrite: (node: any) => {
-          if (node.children) {
-            node.children = node.children.flatMap((child: any) => {
-              if (child.type === "text") {
-                const parts = toText(child).split(/(@\w+)/g)
-                return parts.map((part) => {
-                  if (part.startsWith("@")) {
-                    return {
-                      type: "element",
-                      tagName: "mention",
-                      children: [{ type: "text", value: part }],
-                    }
-                  } else {
-                    return {
-                      type: "text",
-                      value: part,
-                    }
-                  }
-                })
-              } else {
-                return child
-              }
-            })
-          }
-        },
+      .use(rehypeEmbed, {
+        transformers,
       })
-      .use(rehypeAutolinkHeadings, {
-        properties: {
-          className: ["xlog-anchor"],
-          ariaHidden: true,
-          tabIndex: -1,
-        },
-        content(node) {
-          return [
-            {
-              type: "element",
-              tagName: "span",
-              properties: {
-                className: ["i-mingcute:link-line"],
-              },
-              children: [],
-            },
-            {
-              type: "element",
-              tagName: "anchor",
-              properties: {
-                name: node.properties?.id,
-              },
-              children: [],
-            },
-          ]
-        },
-      })
-      .use(html ? () => (tree: any) => {} : rehypeReact, {
-        createElement: createElement,
-        components: {
-          img: Image,
-          anchor: Element,
-          mention: Mention,
-          mermaid: Mermaid,
-        } as any,
-      })
-      .use(() => (tree) => {
-        env.tree = tree
-      })
-      .processSync(content)
+      .use(rehypeRemoveH1)
 
-    contentHTML = result.toString()
-  } catch (error) {
-    console.error(error)
+    pipeline
+      .use(rehypeKatex, {
+        strict: false,
+      })
+      .use(rehypeMention)
+
+    // markdown abstract syntax tree
+    mdastTree = pipeline.parse(file)
+    // hypertext abstract syntax tree
+    hastTree = pipeline.runSync(mdastTree, file)
+  } catch (e) {
+    const error = e as Error
+    console.error(e)
+    if (!isServerSide()) {
+      toast.error(error?.message)
+    }
+  }
+  let Pre: FC<
+    ClassAttributes<HTMLPreElement> &
+      HTMLAttributes<HTMLPreElement> &
+      ExtraProps
+  > = memoedPreComponentMap[hashCodeThemeKey(codeTheme)]
+  if (!Pre) {
+    Pre = function Pre(props: any) {
+      return createElement(ShikiRemark, { ...props, codeTheme }, props.children)
+    }
+    memoedPreComponentMap[hashCodeThemeKey(codeTheme)] = Pre
   }
   return {
-    contentHTML,
-    element: result?.result,
-    excerpt: result?.data.meta.description,
-    frontMatter: env.frontMatter,
-    cover: env.cover,
-    toc: env.toc,
-    tree: env.tree,
+    tree: hastTree,
+    toToc: () =>
+      mdastTree &&
+      toc(mdastTree, {
+        tight: true,
+        ordered: true,
+      }),
+    toHTML: () => hastTree && toHtml(hastTree),
+    toElement: () =>
+      hastTree &&
+      toJsxRuntime(hastTree, {
+        Fragment,
+        components: {
+          // @ts-expect-error
+          img: AdvancedImage,
+          mention: Mention,
+          mermaid: Mermaid,
+          // @ts-expect-error
+          audio: APlayer,
+          // @ts-expect-error
+          video: DPlayer,
+          tweet: Tweet,
+          "github-repo": GithubRepo,
+          "xlog-post": XLogPost,
+          // @ts-expect-error
+          style: Style,
+          rss: RSS,
+          // @ts-expect-error
+          h1: HeadRenderMap.h1,
+          // @ts-expect-error
+          h2: HeadRenderMap.h2,
+          // @ts-expect-error
+          h3: HeadRenderMap.h3,
+          // @ts-expect-error
+          h4: HeadRenderMap.h4,
+          // @ts-expect-error
+          h5: HeadRenderMap.h5,
+
+          // @ts-expect-error
+          pre: Pre,
+        },
+        ignoreInvalidStyle: true,
+        // @ts-expect-error: untyped.
+        jsx,
+        // @ts-expect-error: untyped.
+        jsxs,
+        passNode: true,
+      }),
+    toMetadata: () => {
+      let metadata = {
+        frontMatter: undefined,
+        images: [],
+        audio: undefined,
+        excerpt: undefined,
+      } as {
+        frontMatter?: Record<string, any>
+        images: string[]
+        audio?: string
+        excerpt?: string
+      }
+
+      metadata.excerpt = file.data.meta?.description || undefined
+
+      if (mdastTree) {
+        visit(mdastTree, (node, index, parent) => {
+          if (node.type === "yaml") {
+            metadata.frontMatter = jsYaml.load(node.value) as Record<
+              string,
+              any
+            >
+          }
+        })
+      }
+      if (hastTree) {
+        visit(hastTree, (node, index, parent) => {
+          if (node.type === "element") {
+            if (
+              node.tagName === "img" &&
+              typeof node.properties.src === "string"
+            ) {
+              metadata.images.push(node.properties.src)
+            }
+            if (node.tagName === "audio") {
+              if (typeof node.properties.cover === "string") {
+                metadata.images.push(node.properties.cover)
+              }
+              if (!metadata.audio && typeof node.properties.src === "string") {
+                metadata.audio = node.properties.src
+              }
+            }
+          }
+        })
+      }
+
+      return metadata
+    },
   }
 }

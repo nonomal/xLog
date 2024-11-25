@@ -1,353 +1,116 @@
-import { SiteNavigationItem, Profile } from "~/lib/types"
-import { nanoid } from "nanoid"
-import unidata from "~/queries/unidata.server"
-import type Unidata from "unidata.js"
-import type { Profiles as UniProfiles } from "unidata.js"
-import { createClient, cacheExchange, fetchExchange } from "@urql/core"
-import { Indexer } from "crossbell.js"
-import { CharacterOperatorPermission } from "crossbell.js"
+import { CharacterOperatorPermission } from "crossbell"
+import type { Address } from "viem"
+
 import type { useContract } from "@crossbell/contract"
-import dayjs from "dayjs"
-import { expandUnidataProfile } from "~/lib/expand-unit"
+import { indexer } from "@crossbell/indexer"
+import { gql } from "@urql/core"
+
+import { expandCrossbellCharacter } from "~/lib/expand-unit"
+import { client } from "~/queries/graphql"
 
 type Contract = ReturnType<typeof useContract>
 
-const indexer = new Indexer()
-
-export type GetUserSitesParams =
-  | {
-      address: string
-      unidata?: Unidata
-    }
-  | {
-      handle: string
-      unidata?: Unidata
-    }
-
-export const getUserSites = async (params: GetUserSitesParams) => {
-  let profiles: UniProfiles | null = null
-
-  try {
-    const source = "Crossbell Profile"
-    const filter = { primary: true }
-
-    if ("address" in params) {
-      profiles = await (params.unidata || unidata).profiles.get({
-        source,
-        filter,
-        identity: params.address,
-        platform: "Ethereum",
-      })
-    }
-
-    if ("handle" in params) {
-      profiles = await (params.unidata || unidata).profiles.get({
-        source,
-        filter,
-        identity: params.handle,
-        platform: "Crossbell",
-      })
-    }
-  } catch (error) {
+export const getSite = async (input: string) => {
+  const result = await indexer.character.getByHandle(input)
+  if (result) {
+    return await expandCrossbellCharacter(result)
+  } else {
     return null
   }
-
-  const sites: Profile[] =
-    profiles?.list?.map((profile) => {
-      expandUnidataProfile(profile)
-      return profile
-    }) ?? []
-
-  return sites.length > 0 ? sites : null
 }
 
-export type GetAccountSitesParams = {
-  handle: string
-  unidata?: Unidata
-}
-
-export const getAccountSites = (
-  params: GetAccountSitesParams,
-): Promise<Profile[] | null> => {
-  return getUserSites({
-    handle: params.handle,
-    unidata: params.unidata,
-  })
-}
-
-export const getSite = async (input: string, customUnidata?: Unidata) => {
-  const profiles = await (customUnidata || unidata).profiles.get({
-    source: "Crossbell Profile",
-    identity: input,
-    platform: "Crossbell",
+export const getSiteByAddress = async (input: string) => {
+  const result = await indexer.character.getMany(input as Address, {
+    primary: true,
   })
 
-  const site: Profile = profiles.list[0]
-  if (site) {
-    expandUnidataProfile(site)
+  if (result?.list?.[0]) {
+    return await expandCrossbellCharacter(result.list[0])
   }
-
-  return site
 }
 
-export const getSites = async (input: number[]) => {
-  const client = createClient({
-    url: "https://indexer.crossbell.io/v1/graphql",
-    exchanges: [cacheExchange, fetchExchange],
-  })
-  const oneMonthAgo = dayjs().subtract(15, "day").toISOString()
-  const result = await client
+export const getSubscriptionsFromList = async (
+  list: number[],
+  fromCharacterId: number,
+) => {
+  const response = await client
     .query(
-      `
-        query getCharacters($identities: [Int!], $limit: Int) {
-          characters( where: { characterId: { in: $identities } }, orderBy: [{ updatedAt: desc }], take: $limit ) {
-            handle
-            characterId
-            metadata {
-              uri
-              content
+      gql`
+        query getFollows($list: [Int!], $fromCharacterId: Int!) {
+          links(
+            where: {
+              linkType: { equals: "follow" }
+              fromCharacterId: { equals: $fromCharacterId }
+              toCharacterId: { in: $list }
             }
+          ) {
+            toCharacterId
           }
-          notes( where: { characterId: { in: $identities }, createdAt: { gt: "${oneMonthAgo}" }, metadata: { is: { content: { path: "sources", array_contains: "xlog" } } } }, orderBy: [{ updatedAt: desc }] ) {
-            characterId
-            createdAt
-          }
-        }`,
+        }
+      `,
       {
-        identities: input,
+        list,
+        fromCharacterId,
       },
     )
     .toPromise()
 
-  result.data?.characters?.forEach((site: any) => {
-    if (site.metadata.content) {
-      site.metadata.content.name = site.metadata?.content?.name || site.handle
-    } else {
-      site.metadata.content = {
-        name: site.handle,
-      }
-    }
-
-    site.custom_domain =
-      site.metadata?.content?.attributes?.find(
-        (a: any) => a.trait_type === "xlog_custom_domain",
-      )?.value || ""
-  })
-
-  const createdAts: {
-    [key: string]: string
-  } = {}
-  result.data?.notes.forEach((note: any) => {
-    if (!createdAts[note.characterId + ""]) {
-      createdAts[note.characterId + ""] = note.createdAt
-    }
-  })
-  const list = Object.keys(createdAts)
-    .map((characterId: string) => {
-      const character = result.data?.characters.find(
-        (c: any) => c.characterId === characterId,
-      )
-
-      return {
-        ...character,
-        createdAt: createdAts[characterId],
-      }
-    })
-    .sort((a: any, b: any) => {
-      return b.createdAt > a.createdAt ? 1 : -1
-    })
-
-  return list
+  return response.data?.links.map((link: any) => link.toCharacterId)
 }
 
-export const getSubscription = async (
-  siteId: string,
-  handle: string,
-  customUnidata?: Unidata,
-) => {
-  const links = await (customUnidata || unidata).links.get({
-    source: "Crossbell Link",
-    identity: handle,
-    platform: "Crossbell",
-    filter: { to: siteId },
+export const getSubscription = async (input: {
+  toCharacterId: number
+  characterId: number
+}) => {
+  const result = await indexer.link.getMany(input.characterId, {
+    linkType: "follow",
+    toCharacterId: input.toCharacterId,
   })
 
-  return !!links?.list?.length
+  return !!result?.list?.length
 }
 
-export const getSiteSubscriptions = async (
-  data: {
-    siteId: string
-    cursor?: string
-    limit?: number
-  },
-  customUnidata?: Unidata,
-) => {
-  const links = await (customUnidata || unidata).links.get({
-    source: "Crossbell Link",
-    identity: data.siteId,
-    platform: "Crossbell",
-    reversed: true,
+export const getSiteSubscriptions = async (data: {
+  characterId: number
+  cursor?: string
+  limit?: number
+}) => {
+  return indexer.link.getBacklinksOfCharacter(data.characterId, {
+    linkType: "follow",
     cursor: data.cursor,
     limit: data.limit,
   })
-
-  links?.list.map(async (item: any) => {
-    item.character = item.metadata.from_raw
-  }) || []
-
-  return links
 }
 
-export const getSiteToSubscriptions = async (
-  data: {
-    siteId: string
-    cursor?: string
-  },
-  customUnidata?: Unidata,
-) => {
-  const links = await (customUnidata || unidata).links.get({
-    source: "Crossbell Link",
-    identity: data.siteId,
-    platform: "Crossbell",
+export const getSiteToSubscriptions = async (data: {
+  characterId: number
+  cursor?: string
+}) => {
+  return indexer.link.getMany(data.characterId, {
+    linkType: "follow",
     cursor: data.cursor,
   })
-
-  links?.list.map(async (item: any) => {
-    item.character = item.metadata.to_raw
-  }) || []
-
-  return links
 }
 
-export async function updateSite(
-  payload: {
-    site: string
-    name?: string
-    description?: string
-    icon?: string | null
-    subdomain?: string
-    navigation?: SiteNavigationItem[]
-    css?: string
-    ga?: string
-    custom_domain?: string
-    banner?: {
-      address: string
-      mime_type: string
-    }
-    connected_accounts?: Profile["connected_accounts"]
-  },
-  customUnidata?: Unidata,
-  newbieToken?: string,
-) {
-  return await (customUnidata || unidata).profiles.set(
-    {
-      source: "Crossbell Profile",
-      identity: payload.site,
-      platform: "Crossbell",
-      action: "update",
-    },
-    {
-      ...(payload.name && { name: payload.name }),
-      ...(payload.description && { bio: payload.description }),
-      ...(payload.icon && { avatars: [payload.icon] }),
-      ...(payload.banner && { banners: [payload.banner] }),
-      ...(payload.subdomain && { username: payload.subdomain }),
-      ...(payload.connected_accounts && {
-        connected_accounts: payload.connected_accounts,
-      }),
-      ...((payload.navigation !== undefined ||
-        payload.css !== undefined ||
-        payload.ga !== undefined ||
-        payload.custom_domain !== undefined) && {
-        attributes: [
-          ...(payload.navigation !== undefined
-            ? [
-                {
-                  trait_type: "xlog_navigation",
-                  value: JSON.stringify(payload.navigation),
-                },
-              ]
-            : []),
-          ...(payload.css !== undefined
-            ? [
-                {
-                  trait_type: "xlog_css",
-                  value: payload.css,
-                },
-              ]
-            : []),
-          ...(payload.ga !== undefined
-            ? [
-                {
-                  trait_type: "xlog_ga",
-                  value: payload.ga,
-                },
-              ]
-            : []),
-          ...(payload.custom_domain !== undefined
-            ? [
-                {
-                  trait_type: "xlog_custom_domain",
-                  value: payload.custom_domain,
-                },
-              ]
-            : []),
-        ],
-      }),
-    },
-    {
-      newbieToken,
-    },
+export async function getCommentsBySite(input: {
+  characterId?: number
+  cursor?: string
+}) {
+  const notes = await indexer.note.getMany({
+    toCharacterId: input.characterId,
+    limit: 7,
+    includeCharacter: true,
+    cursor: input.cursor,
+    includeNestedNotes: true,
+    nestedNotesDepth: 3 as 3,
+    nestedNotesLimit: 20,
+  })
+
+  notes.list = notes.list.filter((item) =>
+    item.toNote?.metadata?.content?.sources?.includes("xlog"),
   )
-}
 
-export async function createSite(
-  address: string,
-  payload: { name: string; subdomain: string },
-  customUnidata?: Unidata,
-) {
-  return await (customUnidata || unidata).profiles.set(
-    {
-      source: "Crossbell Profile",
-      identity: address,
-      platform: "Ethereum",
-      action: "add",
-    },
-    {
-      username: payload.subdomain,
-      name: payload.name,
-      tags: [
-        "navigation:" +
-          JSON.stringify([
-            {
-              id: nanoid(),
-              label: "Archives",
-              url: "/archives",
-            },
-          ]),
-      ],
-    },
-  )
-}
-
-export async function subscribeToSites(
-  input: {
-    user: Profile
-    sites: {
-      characterId: string
-    }[]
-  },
-  contract?: Contract,
-) {
-  if (input.user.metadata?.proof) {
-    return contract?.linkCharactersInBatch(
-      input.user.metadata.proof,
-      input.sites.map((s) => s.characterId).filter((c) => c) as any,
-      [],
-      "follow",
-    )
-  }
+  return notes
 }
 
 const xLogOperatorPermissions: CharacterOperatorPermission[] = [
@@ -359,25 +122,26 @@ const xLogOperatorPermissions: CharacterOperatorPermission[] = [
 
 export async function addOperator(
   input: {
-    characterId: number
+    characterId?: number
     operator: string
   },
   contract?: Contract,
 ) {
   if (input.operator && input.characterId) {
-    return contract?.grantOperatorPermissionsForCharacter(
-      input.characterId,
-      input.operator,
-      xLogOperatorPermissions,
-    )
+    return contract?.operator.grantForCharacter({
+      characterId: input.characterId,
+      operator: input.operator as Address,
+      permissions: xLogOperatorPermissions,
+    })
   }
 }
 
 export async function getOperators(input: { characterId?: number }) {
   if (input.characterId) {
-    const result = await indexer?.getCharacterOperators(input.characterId, {
-      limit: 100,
-    })
+    const result = await indexer?.operator.getManyForCharacter(
+      input.characterId,
+      { limit: 100 },
+    )
     result.list = result.list
       .filter(
         (o) =>
@@ -403,8 +167,12 @@ export async function isOperators(input: {
 }) {
   if (input.characterId) {
     const permissions =
-      (await indexer?.getCharacterOperator(input.characterId, input.operator))
-        ?.permissions || []
+      (
+        await indexer?.operator.getForCharacter(
+          input.characterId,
+          input.operator as Address,
+        )
+      )?.permissions || []
     for (const permission of xLogOperatorPermissions) {
       if (!permissions.includes(permission)) {
         return false
@@ -423,51 +191,70 @@ export async function removeOperator(
   contract?: Contract,
 ) {
   if (input.characterId) {
-    return contract?.grantOperatorPermissionsForCharacter(
-      input.characterId,
-      input.operator,
-      [],
-    )
+    return contract?.operator.grantForCharacter({
+      characterId: input.characterId,
+      operator: input.operator as Address,
+      permissions: [],
+    })
   }
 }
 
-export async function getNFTs(address: string, customUnidata?: Unidata) {
-  const assets = await (customUnidata || unidata).assets.get({
-    source: "Ethereum NFT",
-    identity: address,
-  })
-  return assets
-}
-
-export async function getStat({ characterId }: { characterId: string }) {
+export async function getStat({ characterId }: { characterId: number }) {
   if (characterId) {
-    const [stat, site, subscriptions, comments, notes] = await Promise.all([
-      (
-        await fetch(
-          `https://indexer.crossbell.io/v1/stat/characters/${characterId}`,
-        )
-      ).json(),
-      indexer.getCharacter(characterId),
-      indexer.getBacklinksOfCharacter(characterId, {
-        limit: 0,
-      }),
-      indexer.getNotes({
-        limit: 0,
-        toCharacterId: characterId,
-      }),
-      indexer.getNotes({
-        characterId,
-        sources: "xlog",
-        tags: ["post"],
-        limit: 0,
-      }),
-    ])
+    const [stat, site, subscriptions, comments, notes, likes, achievement] =
+      await Promise.all([
+        (
+          await fetch(
+            `https://indexer.crossbell.io/v1/stat/characters/${characterId}`,
+          )
+        ).json(),
+        indexer.character.get(characterId),
+        indexer.link.getBacklinksOfCharacter(characterId, {
+          limit: 0,
+          linkType: "follow",
+        }),
+        indexer.note.getMany({
+          limit: 0,
+          toCharacterId: characterId,
+        }),
+        indexer.note.getMany({
+          characterId,
+          sources: "xlog",
+          limit: 0,
+        }),
+        await client
+          .query(
+            gql`
+              query getLinklistCount($characterId: Int!) {
+                linkCount(
+                  where: {
+                    linkType: { equals: "like" }
+                    toCharacterId: { equals: $characterId }
+                  }
+                )
+              }
+            `,
+            {
+              characterId,
+            },
+          )
+          .toPromise(),
+        await indexer.achievement.getMany(characterId, {
+          status: ["MINTED"],
+        }),
+      ])
+
     return {
       viewsCount: stat.viewNoteCount,
       createdAt: site?.createdAt,
+      createTx: site?.transactionHash,
       subscriptionCount: subscriptions?.count,
       commentsCount: comments?.count,
       notesCount: notes?.count,
+      likesCount: likes?.data?.linkCount,
+      achievements: achievement?.list.reduce((acc, cur) => {
+        return acc + cur.groups.length
+      }, 0),
     }
   }
 }
@@ -475,7 +262,7 @@ export async function getStat({ characterId }: { characterId: string }) {
 const getMiraTokenDecimals = async (contract: Contract) => {
   let decimals
   try {
-    decimals = await contract.getMiraTokenDecimals()
+    decimals = await contract.tips.getTokenDecimals()
   } catch (error) {
     decimals = {
       data: 18,
@@ -495,18 +282,18 @@ export async function tipCharacter(
 ) {
   const decimals = await getMiraTokenDecimals(contract)
   if (input.noteId) {
-    return await contract?.tipCharacterForNote(
-      input.fromCharacterId,
-      input.toCharacterId,
-      input.noteId,
-      BigInt(input.amount) * BigInt(10) ** BigInt(decimals?.data || 18),
-    )
+    return await contract?.tips.tipCharacterForNote({
+      fromCharacterId: input.fromCharacterId,
+      toCharacterId: input.toCharacterId,
+      toNoteId: input.noteId,
+      amount: BigInt(input.amount) * BigInt(10) ** BigInt(decimals?.data || 18),
+    })
   } else {
-    return await contract?.tipCharacter(
-      input.fromCharacterId,
-      input.toCharacterId,
-      BigInt(input.amount) * BigInt(10) ** BigInt(decimals?.data || 18),
-    )
+    return await contract?.tips.tipCharacter({
+      fromCharacterId: input.fromCharacterId,
+      toCharacterId: input.toCharacterId,
+      amount: BigInt(input.amount) * BigInt(10) ** BigInt(decimals?.data || 18),
+    })
   }
 }
 
@@ -516,17 +303,18 @@ export async function getTips(
     characterId?: string | number
     toNoteId?: string | number
     cursor?: string
+    limit?: number
   },
   contract: Contract,
 ) {
-  const address = await contract.getMiraTokenAddress()
-  const tips = await indexer?.getTips({
+  const address = await contract.tips.getTokenAddress()
+  const tips = await indexer?.tip.getMany({
     characterId: input.characterId,
     toNoteId: input.toNoteId,
     toCharacterId: input.toCharacterId,
     tokenAddress: address?.data || "0xAfB95CC0BD320648B3E8Df6223d9CDD05EbeDC64",
     includeMetadata: true,
-    limit: 7,
+    limit: input.limit || 7,
     cursor: input.cursor,
   })
 
@@ -565,7 +353,7 @@ export type AchievementSection = {
     items: {
       tokenId: number
       name: string
-      status: "INACTIVE" | "MINTABLE" | "MINTED" | "COMMING"
+      status: "INACTIVE" | "MINTABLE" | "MINTED" | "COMING"
       mintedAt: string | null
       transactionHash: string | null
       info: {
@@ -584,8 +372,8 @@ export type AchievementSection = {
   }[]
 }
 
-export async function getAchievements(characterId: string) {
-  const crossbellAchievements = (await indexer.getAchievements(characterId))
+export async function getAchievements(characterId: number) {
+  const crossbellAchievements = (await indexer.achievement.getMany(characterId))
     ?.list as AchievementSection[] | undefined
   const xLogAchievements: AchievementSection[] = [
     {
@@ -616,7 +404,7 @@ export async function getAchievements(characterId: string) {
               },
               tokenId: 0,
               name: "showcase-superstar",
-              status: "COMMING",
+              status: "COMING",
               mintedAt: null,
               transactionHash: null,
             },
@@ -644,7 +432,7 @@ export async function getAchievements(characterId: string) {
               },
               tokenId: 0,
               name: "mirror-xyz-migrator",
-              status: "COMMING",
+              status: "COMING",
               mintedAt: null,
               transactionHash: null,
             },
@@ -660,19 +448,17 @@ export async function getAchievements(characterId: string) {
 }
 
 export async function mintAchievement(input: {
-  characterId: string
+  characterId: number
   achievementId: number
 }) {
-  return indexer.mintAchievement(input.characterId, input.achievementId)
+  return indexer.achievement.mint(input.characterId, input.achievementId)
 }
 
-export async function getMiraBalance(characterId: string, contract: Contract) {
+export async function getMiraBalance(characterId: number, contract: Contract) {
   const decimals = await getMiraTokenDecimals(contract)
-  const result = await contract.getMiraBalanceOfCharacter(characterId)
-  result.data = (
-    BigInt(result.data) /
-    BigInt(10) ** BigInt(decimals?.data || 18)
-  ).toString()
+  const result = await contract.tips.getBalanceOfCharacter({ characterId })
+
+  result.data = BigInt(result.data) / BigInt(10) ** BigInt(decimals?.data || 18)
 
   return result
 }
@@ -691,7 +477,7 @@ export async function fetchTenant(
   )
   const txt = await res.json()
   if (txt.Status === 5 && retries > 0) {
-    console.log("retrying", host, retries - 1)
+    console.warn("retrying", host, retries - 1)
     return await fetchTenant(host, retries - 1)
   } else {
     return txt?.Answer?.[0]?.data.replace(/^"|"$/g, "")
@@ -714,4 +500,22 @@ export async function checkDomain(domain: string, handle: string) {
   ).json()
 
   return check.data
+}
+
+export async function getBlockNumber() {
+  const result = await (
+    await fetch("https://scan.crossbell.io/api/eth-rpc", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        method: "eth_blockNumber",
+        params: [],
+        id: 0,
+      }),
+    })
+  ).json()
+  return Number(BigInt(result.result))
 }

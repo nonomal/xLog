@@ -1,154 +1,254 @@
-import {
-  useQuery,
-  useMutation,
-  useQueryClient,
-  useInfiniteQuery,
-} from "@tanstack/react-query"
-import { useContract } from "@crossbell/contract"
+"use client"
+
 import {
   useAccountState,
   useFollowCharacter,
   useFollowCharacters,
+  useTip,
   useUnfollowCharacter,
+  useUpdateCharacterHandle,
+  useUpdateCharacterMetadata,
 } from "@crossbell/connect-kit"
+import { useContract } from "@crossbell/contract"
+import { useRefCallback } from "@crossbell/util-hooks"
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query"
 
+import { SiteNavigationItem } from "~/lib/types"
 import * as siteModel from "~/models/site.model"
-import { useUnidata } from "./unidata"
-
-export const useAccountSites = () => {
-  const unidata = useUnidata()
-  const account = useAccountState((s) => s.computed.account)
-  const handle =
-    account?.type === "email" ? account.character?.handle : account?.handle
-
-  return useQuery(["getUserSites", handle], async () => {
-    if (!account || !handle) {
-      return []
-    }
-
-    return siteModel.getAccountSites({ handle, unidata })
-  })
-}
 
 export const useGetSite = (input?: string) => {
-  const unidata = useUnidata()
   return useQuery(["getSite", input], async () => {
     if (!input) {
       return null
     }
-    return siteModel.getSite(input, unidata)
+    return siteModel.getSite(input)
   })
 }
 
-export const useGetSites = (input: number[]) => {
-  return useQuery(["getSites", input], async () => {
-    if (!input) {
-      return null
-    }
-    return siteModel.getSites(input)
-  })
-}
-
-export const useGetSubscription = (siteId: string | undefined) => {
+export const useGetSubscription = (toCharacterId?: number) => {
   const account = useAccountState((s) => s.computed.account)
-  const handle =
-    account?.type === "email" ? account.character?.handle : account?.handle
-  const unidata = useUnidata()
 
-  return useQuery(["getSubscription", siteId, handle], async () => {
-    if (!handle || !siteId) {
-      return false
-    }
+  return useQuery(
+    ["getSubscription", toCharacterId, account?.characterId],
+    async () => {
+      if (!account?.characterId || !toCharacterId) {
+        return false
+      }
 
-    return siteModel.getSubscription(siteId, handle, unidata)
-  })
+      return siteModel.getSubscription({
+        characterId: account?.characterId,
+        toCharacterId: toCharacterId,
+      })
+    },
+  )
 }
 
-export const useGetSiteSubscriptions = (data: { siteId: string }) => {
-  const unidata = useUnidata()
+export const useGetSiteSubscriptions = (data: { characterId?: number }) => {
   return useInfiniteQuery({
     queryKey: ["getSiteSubscriptions", data],
     queryFn: async ({ pageParam }) => {
-      if (!data.siteId) {
+      if (!data.characterId) {
         return {
-          total: 0,
+          count: 0,
           list: [],
           cursor: undefined,
         }
       }
-      return siteModel.getSiteSubscriptions(
-        {
-          ...data,
-          cursor: pageParam,
-        },
-        unidata,
-      )
+      return siteModel.getSiteSubscriptions({
+        characterId: data.characterId,
+        cursor: pageParam,
+      })
     },
     getNextPageParam: (lastPage) => lastPage?.cursor || undefined,
   })
 }
 
-export const useGetSiteToSubscriptions = (data: { siteId: string }) => {
-  const unidata = useUnidata()
+export const useGetSiteToSubscriptions = (data: { characterId?: number }) => {
   return useInfiniteQuery({
     queryKey: ["getSiteToSubscriptions", data],
     queryFn: async ({ pageParam }) => {
-      if (!data.siteId) {
+      if (!data.characterId) {
         return {
-          total: 0,
+          count: 0,
           list: [],
           cursor: undefined,
         }
       }
-      return siteModel.getSiteToSubscriptions(
-        {
-          ...data,
-          cursor: pageParam,
-        },
-        unidata,
-      )
+      return siteModel.getSiteToSubscriptions({
+        characterId: data.characterId,
+        cursor: pageParam,
+      })
     },
     getNextPageParam: (lastPage) => lastPage?.cursor || undefined,
   })
 }
 
-export function useUpdateSite() {
-  const newbieToken = useAccountState((s) => s.email?.token)
-  const unidata = useUnidata()
+export function useUpdateHandle() {
   const queryClient = useQueryClient()
-  const mutation = useMutation(
-    async (payload: Parameters<typeof siteModel.updateSite>[0]) => {
-      return siteModel.updateSite(payload, unidata, newbieToken)
-    },
-    {
-      onSuccess: (data, variables) => {
-        queryClient.invalidateQueries(["getUserSites"])
-        queryClient.invalidateQueries(["getSite"])
-      },
+  const { mutateAsync: _, ...updateCharacterHandle } =
+    useUpdateCharacterHandle()
+
+  const mutate = useRefCallback(
+    (input: { characterId?: number; handle?: string }) => {
+      if (!input.characterId || !input.handle) {
+        throw new Error("characterId and handle are required")
+      }
+
+      return updateCharacterHandle.mutate(
+        {
+          characterId: input.characterId,
+          handle: input.handle,
+        },
+        {
+          onSuccess: (data, variables) => {
+            queryClient.invalidateQueries(["getSite"])
+          },
+        },
+      )
     },
   )
-  return mutation
+
+  return {
+    ...updateCharacterHandle,
+    mutate,
+  }
 }
 
-export function useCreateSite() {
-  const unidata = useUnidata()
+export function useUpdateSite() {
   const queryClient = useQueryClient()
-  const account = useAccountState((s) => s.computed.account)
-  const address = account?.type === "email" ? account.email : account?.address
+  const { mutateAsync: _, ...updateCharacterMetadata } =
+    useUpdateCharacterMetadata()
 
-  return useMutation(
-    async (payload: { name: string; subdomain: string }) => {
-      if (address) {
-        // FIXME: - Support email users
-        return siteModel.createSite(address, payload, unidata)
+  const mutate = useRefCallback(
+    (input: {
+      characterId?: number
+      name?: string
+      site_name?: string
+      description?: string
+      footer?: string
+      icon?: string
+      navigation?: SiteNavigationItem[]
+      css?: string
+      ga?: string
+      ua?: string
+      uh?: string
+      custom_domain?: string
+      // null means remove
+      banner?: {
+        address: string
+        mime_type: string
+      } | null
+      connected_accounts?: {
+        identity: string
+        platform: string
+        url?: string | undefined
+      }[]
+      code_theme?: {
+        light?: string
+        dark?: string
       }
-    },
-    {
-      onSuccess: () => {
-        queryClient.invalidateQueries(["getUserSites", address])
-      },
+      follow?: {
+        feed_id?: string
+        user_id?: string
+      }
+    }) => {
+      if (!input.characterId) {
+        throw new Error("characterId are required")
+      }
+
+      return updateCharacterMetadata.mutate(
+        {
+          characterId: input.characterId,
+          edit(metadataDraft) {
+            if (input.name !== undefined) {
+              metadataDraft.name = input.name
+            }
+            if (input.description !== undefined) {
+              metadataDraft.bio = input.description
+            }
+            if (input.icon !== undefined) {
+              metadataDraft.avatars = [input.icon]
+            }
+            if (input.banner !== undefined) {
+              metadataDraft.banners = input.banner ? [input.banner] : []
+            }
+            if (input.connected_accounts !== undefined) {
+              metadataDraft.connected_accounts = input.connected_accounts.map(
+                (account) => {
+                  if (account.identity && account.platform) {
+                    return `csb://account:${
+                      account.identity
+                    }@${account.platform.toLowerCase()}`
+                  } else if (typeof account === "string") {
+                    return account
+                  } else {
+                    return ""
+                  }
+                },
+              )
+            }
+
+            // attributes
+            const setAttribute = (
+              inputKey: keyof typeof input,
+              typeKey: string,
+              needStringify: boolean = false,
+            ) => {
+              if (input[inputKey] !== undefined) {
+                // Initialize attributes
+                const newAttribute: {
+                  trait_type: string
+                  value: any
+                } = {
+                  trait_type: `xlog_${typeKey}`,
+                  value: needStringify
+                    ? JSON.stringify(input[inputKey])
+                    : input[inputKey],
+                }
+                if (!metadataDraft.attributes) {
+                  metadataDraft.attributes = [newAttribute]
+                } else {
+                  const oldAttribute = metadataDraft.attributes.find(
+                    (attr) => attr.trait_type === newAttribute.trait_type,
+                  )
+                  if (oldAttribute) {
+                    oldAttribute.value = newAttribute.value
+                  } else {
+                    metadataDraft.attributes.push(newAttribute)
+                  }
+                }
+              }
+            }
+            setAttribute("navigation", "navigation", true)
+            setAttribute("code_theme", "code_theme", true)
+            setAttribute("follow", "follow", true)
+            setAttribute("css", "css")
+            setAttribute("ga", "ga")
+            setAttribute("ua", "ua")
+            setAttribute("uh", "uh")
+            setAttribute("custom_domain", "custom_domain")
+            setAttribute("site_name", "site_name")
+            setAttribute("footer", "footer")
+          },
+        },
+        {
+          onSuccess: (data, variables) => {
+            queryClient.invalidateQueries(["getSite"])
+          },
+        },
+      )
     },
   )
+
+  return {
+    ...updateCharacterMetadata,
+    mutate,
+  }
 }
 
 export function useSubscribeToSite() {
@@ -161,16 +261,14 @@ export function useSubscribeToSite() {
         queryClient.invalidateQueries([
           "getSiteSubscriptions",
           {
-            siteId: variables.siteId,
+            characterId: variables.characterId,
           },
         ]),
 
         queryClient.invalidateQueries([
           "getSubscription",
-          variables.siteId,
-          account?.type === "email"
-            ? account?.character?.handle
-            : account?.handle,
+          variables.characterId,
+          account?.characterId,
         ]),
       ])
     },
@@ -186,18 +284,18 @@ export function useSubscribeToSites() {
   return useFollowCharacters({
     onSuccess: (_, variables: any) =>
       Promise.all(
-        variables.siteIds.flatMap((siteId: string) => {
+        variables.siteIds.flatMap((characterId: number) => {
           return [
             queryClient.invalidateQueries([
               "getSiteSubscriptions",
               {
-                siteId,
+                characterId,
               },
             ]),
 
             queryClient.invalidateQueries([
               "getSubscription",
-              siteId,
+              characterId,
               currentCharacterId,
             ]),
           ]
@@ -216,18 +314,38 @@ export function useUnsubscribeFromSite() {
         queryClient.invalidateQueries([
           "getSiteSubscriptions",
           {
-            siteId: variables.siteId,
+            siteId: variables.characterId,
           },
         ]),
         queryClient.invalidateQueries([
           "getSubscription",
-          variables.siteId,
-          account?.type === "email"
-            ? account?.character?.handle
-            : account?.handle,
+          variables.characterId,
+          account?.characterId,
         ]),
       ])
     },
+  })
+}
+
+export const useGetCommentsBySite = (
+  data: Partial<Parameters<typeof siteModel.getCommentsBySite>[0]>,
+) => {
+  return useInfiniteQuery({
+    queryKey: ["getCommentsBySite", data],
+    queryFn: async ({ pageParam }) => {
+      if (!data.characterId) {
+        return {
+          count: 0,
+          list: [],
+          cursor: undefined,
+        }
+      }
+      return siteModel.getCommentsBySite({
+        characterId: data.characterId,
+        cursor: pageParam,
+      })
+    },
+    getNextPageParam: (lastPage) => lastPage.cursor || undefined,
   })
 }
 
@@ -307,22 +425,6 @@ export function useRemoveOperator() {
   )
 }
 
-export const useGetNFTs = (address: string) => {
-  return useQuery(["getNFTs", address], async () => {
-    if (!address) {
-      return null
-    }
-    return await (
-      await fetch(
-        "/api/nfts?" +
-          new URLSearchParams({
-            address,
-          } as any),
-      )
-    ).json()
-  })
-}
-
 export const useGetStat = (
   data: Partial<Parameters<typeof siteModel.getStat>[0]>,
 ) => {
@@ -338,23 +440,15 @@ export const useGetStat = (
 
 export function useTipCharacter() {
   const queryClient = useQueryClient()
-  const contract = useContract()
-  const mutation = useMutation(
-    async (payload: Parameters<typeof siteModel.tipCharacter>[0]) => {
-      return siteModel.tipCharacter(payload, contract)
+
+  return useTip({
+    onSuccess: (data, variables) => {
+      queryClient.invalidateQueries([
+        "getTips",
+        { toCharacterId: variables.characterId },
+      ])
     },
-    {
-      onSuccess: (data, variables) => {
-        queryClient.invalidateQueries([
-          "getTips",
-          {
-            toCharacterId: variables.toCharacterId,
-          },
-        ])
-      },
-    },
-  )
-  return mutation
+  })
 }
 
 export const useGetTips = (
@@ -384,7 +478,7 @@ export const useGetTips = (
   })
 }
 
-export const useGetAchievements = (characterId?: string) => {
+export const useGetAchievements = (characterId?: number) => {
   return useQuery(["getAchievements", characterId], async () => {
     if (!characterId) {
       return null
@@ -410,7 +504,7 @@ export const useMintAchievement = () => {
   )
 }
 
-export const useGetMiraBalance = (characterId?: string) => {
+export const useGetMiraBalance = (characterId?: number) => {
   const contract = useContract()
   return useQuery(["getMiraBalance", characterId], async () => {
     if (!characterId) {
@@ -419,5 +513,37 @@ export const useGetMiraBalance = (characterId?: string) => {
       }
     }
     return siteModel.getMiraBalance(characterId, contract)
+  })
+}
+
+export const useGetCharacterCard = ({
+  siteId,
+  address,
+  enabled,
+}: {
+  siteId?: string
+  address?: string
+  enabled: boolean
+}) => {
+  return useQuery(
+    ["useGetCharacterCard", { siteId, address }],
+    async () => {
+      if (siteId) {
+        return siteModel.getSite(siteId)
+      } else if (address) {
+        return siteModel.getSiteByAddress(address)
+      } else {
+        return null
+      }
+    },
+    {
+      enabled,
+    },
+  )
+}
+
+export const useGetBlockNumber = () => {
+  return useQuery(["getBlockNumber"], async () => {
+    return siteModel.getBlockNumber()
   })
 }

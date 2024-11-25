@@ -1,30 +1,41 @@
-import * as pageModel from "~/models/page.model"
+import AsyncLock from "async-lock"
+import { AnalyzeDocumentChain, loadSummarizationChain } from "langchain/chains"
+import { OpenAI } from "langchain/llms/openai"
+import { PromptTemplate } from "langchain/prompts"
+import removeMarkdown from "remove-markdown"
+
+import { Metadata } from "@prisma/client"
 import { QueryClient } from "@tanstack/react-query"
+
+import { locales } from "~/i18n"
+import { detectLanguage } from "~/lib/detect-lang"
+import { toGateway } from "~/lib/ipfs-parser"
+import prisma from "~/lib/prisma.server"
 import { cacheGet } from "~/lib/redis.server"
-import { getIdBySlug } from "~/pages/api/slug2id"
-import { getSummary } from "~/pages/api/summary"
+import { Language } from "~/lib/types"
+import * as pageModel from "~/models/page.model"
 
 export const fetchGetPage = async (
-  input: Parameters<typeof pageModel.getPage>[0],
+  input: Partial<Parameters<typeof pageModel.getPage>[0]>,
   queryClient: QueryClient,
 ) => {
-  const key = ["getPage", input.page, input]
+  const key = ["getPage", input.characterId, input]
   return await queryClient.fetchQuery(key, async () => {
-    if (!input.pageId) {
-      if (!input.page || !input.site) {
-        return null
-      }
-      const slug2Id = await getIdBySlug(input.page, input.site)
-      if (!slug2Id?.noteId) {
-        return null
-      }
-      input.pageId = `${slug2Id.characterId}-${slug2Id.noteId}`
+    if (!input.characterId || !input.slug) {
+      return null
     }
-    delete input.page
     return cacheGet({
       key,
-      getValueFun: () => pageModel.getPage(input),
-    })
+      getValueFun: () =>
+        pageModel.getPage({
+          slug: input.slug,
+          characterId: input.characterId!,
+          useStat: input.useStat,
+          noteId: input.noteId,
+          handle: input.handle,
+          translateTo: input.translateTo,
+        }),
+    }) as Promise<ReturnType<typeof pageModel.getPage>>
   })
 }
 
@@ -32,7 +43,7 @@ export const prefetchGetPagesBySite = async (
   input: Parameters<typeof pageModel.getPagesBySite>[0],
   queryClient: QueryClient,
 ) => {
-  const key = ["getPagesBySite", input.site, input]
+  const key = ["getPagesBySite", input.characterId, input]
   await queryClient.prefetchInfiniteQuery({
     queryKey: key,
     queryFn: async ({ pageParam }) => {
@@ -53,24 +64,154 @@ export const fetchGetPagesBySite = async (
   input: Parameters<typeof pageModel.getPagesBySite>[0],
   queryClient: QueryClient,
 ) => {
-  const key = ["getPagesBySite", input.site, input]
+  const key = ["getPagesBySite", input.characterId, input]
   return await queryClient.fetchQuery(key, async () => {
     return cacheGet({
       key,
       getValueFun: () => pageModel.getPagesBySite(input),
-    })
+    }) as Promise<ReturnType<typeof pageModel.getPagesBySite>>
   })
 }
 
-export const prefetchGetSummary = async (
-  input: { cid?: string; lang?: string },
-  queryClient: QueryClient,
-) => {
-  const key = ["getSummary", input.cid, input.lang]
-  await queryClient.fetchQuery(key, async () => {
-    if (!input.cid || !input.lang) {
-      return
-    }
-    return getSummary(input.cid, input.lang)
+// Post summary
+
+let model: OpenAI | undefined
+if (process.env.OPENAI_API_KEY) {
+  model = new OpenAI({
+    openAIApiKey: process.env.OPENAI_API_KEY,
+    modelName: "gpt-4o-mini",
+    temperature: 0.3,
+    maxTokens: 400,
   })
+}
+const chains = new Map<string, AnalyzeDocumentChain>()
+
+const getOriginalSummary = async ({
+  cid,
+  lang,
+  content: _content,
+}: {
+  cid: string
+  content?: string
+  lang?: string
+}) => {
+  if (!model) return
+  try {
+    let content: string =
+      _content ??
+      (await (await fetch(toGateway(`ipfs://${cid}`))).json()).content
+
+    if (content?.length > 5000) {
+      content = content.slice(0, 5000)
+    }
+    if (content?.length < 200) {
+      return
+    } else if (content) {
+      const summaryLang = lang ?? detectLanguage(content)
+      console.time(`fetching summary ${cid}, ${summaryLang}`)
+
+      let chain = chains.get(summaryLang)
+      if (!chain) {
+        const prompt = new PromptTemplate({
+          template: `Summarize this in "${summaryLang}" language, If it is a markdown file that includes front matter, Ignore the front matter. Summarize only the content after the second ---:
+        "{text}"
+        CONCISE SUMMARY:`,
+          inputVariables: ["text"],
+        })
+
+        const combineDocsChain = loadSummarizationChain(model, {
+          type: "map_reduce",
+          combineMapPrompt: prompt,
+          combinePrompt: prompt,
+        })
+
+        chain = new AnalyzeDocumentChain({
+          combineDocumentsChain: combineDocsChain,
+        })
+
+        chains.set(summaryLang, chain)
+      }
+
+      const res = await chain.call({
+        input_document: removeMarkdown(content),
+      })
+
+      console.timeEnd(`fetching summary ${cid}, ${lang}`)
+
+      return res?.text as string
+    }
+  } catch (error) {
+    console.error(error)
+    console.timeEnd(`fetching summary ${cid}, ${lang}`)
+  }
+}
+
+const lock = new AsyncLock()
+
+export async function getSummary({
+  cid,
+  lang: _lang,
+}: {
+  cid: string
+  lang?: string
+}) {
+  let lang = _lang ?? ""
+  let content: string | undefined
+  if (!lang) {
+    content = (await (await fetch(toGateway(`ipfs://${cid}`))).json())
+      .content as string
+    lang = detectLanguage(content)
+  }
+
+  const summary = (await cacheGet({
+    key: ["summary", cid, lang],
+    allowEmpty: true,
+    noUpdate: true,
+    noExpire: true,
+    getValueFun: async () => {
+      if (locales.includes(lang as Language)) {
+        let result
+        await lock.acquire(cid, async () => {
+          const meta = await prisma.metadata.findFirst({
+            where: {
+              uri: `ipfs://${cid}`,
+            },
+          })
+          const key = `ai_summary_${lang.replace("-", "").toLowerCase()}`
+          if (meta) {
+            if (meta?.[key as keyof Metadata]) {
+              result = meta?.[key as keyof Metadata]
+            } else {
+              const summary = await getOriginalSummary({ cid, lang, content })
+              if (summary) {
+                await prisma.metadata.update({
+                  where: {
+                    uri: `ipfs://${cid}`,
+                  },
+                  data: {
+                    [key as keyof Metadata]: summary,
+                  },
+                })
+                result = summary
+              }
+            }
+          } else {
+            const summary = await getOriginalSummary({ cid, lang, content })
+            if (summary) {
+              await prisma.metadata.create({
+                data: {
+                  uri: `ipfs://${cid}`,
+                  [key as keyof Metadata]: summary,
+                },
+              })
+              result = summary
+            }
+          }
+        })
+        return result
+      }
+    },
+  })) as string | undefined
+
+  return summary
 }

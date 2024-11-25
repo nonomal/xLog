@@ -1,24 +1,24 @@
-import { FC, useEffect, useState } from "react"
-import { Menu } from "@headlessui/react"
-import { useRouter } from "next/router"
+import { useTranslations } from "next-intl"
+import { useParams, useRouter } from "next/navigation"
+import { useEffect, useState } from "react"
 import toast from "react-hot-toast"
-import type { Note } from "unidata.js"
-import { useDeletePage, useCreateOrUpdatePage } from "~/queries/page"
-import { delStorage, getStorage, setStorage } from "~/lib/storage"
+
+import { Menu } from "@headlessui/react"
 import { useQueryClient } from "@tanstack/react-query"
-import { APP_NAME } from "~/lib/env"
-import { useTranslation } from "next-i18next"
+
+import { DeleteConfirmationModal } from "~/components/common/DeleteConfirmationModal"
 import { useGetState } from "~/hooks/useGetState"
-import { getNoteSlugFromNote, getSiteLink } from "~/lib/helpers"
+import { getNoteSlugFromNote, getTwitterShareUrl } from "~/lib/helpers"
+import { delStorage, getStorage, setStorage } from "~/lib/storage"
+import { ExpandedNote, NoteType } from "~/lib/types"
+import { useDeletePage, usePinPage, useUpdatePage } from "~/queries/page"
 import { useGetSite } from "~/queries/site"
 
-const usePageEditLink = (page: { id: string }, isPost: boolean) => {
-  const router = useRouter()
-  const subdomain = router.query.subdomain as string
+const usePageEditLink = (page: ExpandedNote, type: NoteType) => {
+  const params = useParams()
+  const subdomain = params?.subdomain as string
 
-  return `/dashboard/${subdomain}/editor?id=${page.id}&type=${
-    isPost ? "post" : "page"
-  }`
+  return `/dashboard/${subdomain}/editor?id=${page.noteId}&type=${type}`
 }
 
 interface Item {
@@ -26,21 +26,26 @@ interface Item {
   icon: JSX.Element
   onClick: () => void
 }
-export const PagesManagerMenu: FC<{
-  isPost: boolean
-  page: Note
+export const PagesManagerMenu = ({
+  type,
+  page,
+  onClick: onClose,
+}: {
+  type: NoteType
+  page: ExpandedNote
   onClick: () => void
-}> = ({ isPost, page, onClick: onClose }) => {
-  const { t } = useTranslation(["dashboard", "site"])
+}) => {
+  const t = useTranslations()
 
-  const isCrossbell = !page.applications?.includes("xlog")
   const router = useRouter()
-  const createOrUpdatePage = useCreateOrUpdatePage()
+  const params = useParams()
+  const subdomain = params?.subdomain as string
+  const updatePage = useUpdatePage()
 
-  const editLink = usePageEditLink(page, isPost)
-  const subdomain = router.query.subdomain as string
+  const editLink = usePageEditLink(page, type)
   const queryClient = useQueryClient()
   const deletePage = useDeletePage()
+  const pinPage = usePinPage(page)
 
   const [convertToastId, setConvertToastId] = useState("")
   const [deleteToastId, setDeleteToastId] = useState("")
@@ -59,7 +64,7 @@ export const PagesManagerMenu: FC<{
 
   useEffect(() => {
     if (deletePage.isError) {
-      toast.error(t("Fail to Deleted."), {
+      toast.error(t("Fail to Deleted"), {
         id: getDeleteToastId(),
       })
     }
@@ -67,125 +72,93 @@ export const PagesManagerMenu: FC<{
   }, [deletePage.isError])
 
   useEffect(() => {
-    if (createOrUpdatePage.isSuccess) {
+    if (updatePage.isSuccess) {
       toast.success(t("Converted!"), {
         id: getCurrentToastId(),
       })
-    } else if (createOrUpdatePage.isError) {
-      toast.error(t("Failed to convert."), {
+      updatePage.reset()
+    } else if (updatePage.isError) {
+      toast.error(t("Failed to convert"), {
         id: getCurrentToastId(),
       })
+      updatePage.reset()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [createOrUpdatePage.isSuccess, createOrUpdatePage.isError])
+  }, [updatePage.isSuccess, updatePage.isError])
 
   const site = useGetSite(subdomain)
 
   const items: Item[] = [
     {
       text: "Edit",
-      icon: <span className="i-mingcute:edit-line inline-block"></span>,
+      icon: <span className="i-mingcute-edit-line inline-block"></span>,
       onClick() {
         router.push(editLink)
       },
     },
     {
-      text:
-        "Convert to " +
-        (isCrossbell
-          ? `${APP_NAME} ${isPost ? "Post" : "Page"}`
-          : isPost
-          ? "Page"
-          : "Post"),
-      icon: <span className="i-mingcute:transfer-3-line inline-block"></span>,
+      text: pinPage.isPinned ? "Unpin" : "Pin",
+      icon: <span className="i-mingcute-pin-2-line inline-block"></span>,
+      onClick: pinPage.togglePin,
+    },
+    {
+      text: "Convert to " + (type === "post" ? "Page" : "Post"),
+      icon: <span className="i-mingcute-transfer-3-line inline-block"></span>,
       onClick() {
         const toastId = toast.loading("Converting...")
-        if (isCrossbell) {
-          setConvertToastId(toastId)
-          createOrUpdatePage.mutate({
-            published: true,
-            pageId: page.id,
-            siteId: subdomain,
-            tags: page.tags
-              ?.filter((tag) => tag !== "post" && tag !== "page")
-              ?.join(", "),
-            isPost: isPost,
-            applications: page.applications,
+
+        if (!page.noteId) {
+          const data = getStorage(
+            `draft-${site.data?.characterId}-${page.draftKey}`,
+          )
+          data.type = data.type === "post" ? "page" : "post"
+          setStorage(`draft-${site.data?.characterId}-${page.draftKey}`, data)
+          queryClient.invalidateQueries([
+            "getPagesBySite",
+            site.data?.characterId,
+          ])
+          queryClient.invalidateQueries(["getPage", page.characterId])
+          toast.success("Converted!", {
+            id: toastId,
           })
         } else {
-          if (!page.metadata) {
-            const data = getStorage(`draft-${subdomain}-${page.id}`)
-            data.isPost = !isPost
-            setStorage(`draft-${subdomain}-${page.id}`, data)
-            queryClient.invalidateQueries(["getPagesBySite", subdomain])
-            queryClient.invalidateQueries(["getPage", page.id])
-            toast.success("Converted!", {
-              id: toastId,
-            })
-          } else {
-            setConvertToastId(toastId)
-            createOrUpdatePage.mutate({
-              published: true,
-              pageId: page.id,
-              siteId: subdomain,
-              tags: page.tags
-                ?.filter((tag) => tag !== "post" && tag !== "page")
-                ?.join(", "),
-              isPost: !isPost,
-              applications: page.applications,
-            })
-          }
+          setConvertToastId(toastId)
+          updatePage.mutate({
+            type: type === "post" ? "page" : "post",
+            characterId: page.characterId,
+            noteId: page.noteId,
+          })
         }
       },
     },
     {
       text: "Preview",
-      icon: <span className="i-mingcute:eye-line inline-block"></span>,
+      icon: <span className="i-mingcute-eye-line inline-block"></span>,
       onClick() {
         const slug = getNoteSlugFromNote(page)
         if (!slug) return
-        window.open(`/_site/${subdomain}/${slug}`)
+        window.open(`/site/${subdomain}/${slug}`)
       },
     },
     {
       text: "Share to Twitter",
-      icon: <span className="i-mingcute:twitter-line inline-block"></span>,
+      icon: <span className="i-mingcute-twitter-line inline-block"></span>,
       onClick() {
-        const slug = getNoteSlugFromNote(page)
-        if (!slug) return
-
-        window.open(
-          `https://twitter.com/intent/tweet?url=${getSiteLink({
-            subdomain,
-            domain: site.data?.custom_domain,
-          })}/${encodeURIComponent(slug)}&via=_xLog&text=${encodeURIComponent(
-            `Read my new post - ${page.title}`,
-          )}`,
-        )
+        if (site.data) {
+          const twitterShareUrl = getTwitterShareUrl({
+            page,
+            site: site.data,
+            t,
+          })
+          window.open(twitterShareUrl)
+        }
       },
     },
     {
       text: "Delete",
-      icon: <span className="i-mingcute:delete-2-line inline-block"></span>,
+      icon: <span className="i-mingcute-delete-2-line inline-block"></span>,
       onClick() {
-        if (!page.metadata) {
-          const toastId = toast.loading("Deleting...")
-          delStorage(`draft-${subdomain}-${page.id}`)
-          Promise.all([
-            queryClient.refetchQueries(["getPagesBySite", subdomain]),
-            queryClient.refetchQueries(["getPage", page.id]),
-          ]).then(() => {
-            toast.success("Deleted!", {
-              id: toastId,
-            })
-          })
-        } else {
-          setDeleteToastId(toast.loading("Deleting..."))
-          deletePage.mutate({
-            site: subdomain,
-            id: page.id,
-          })
-        }
+        setDeleteConfirmModalOpen(true)
       },
     },
   ]
@@ -200,26 +173,57 @@ export const PagesManagerMenu: FC<{
     }
   }, [])
 
+  const [deleteConfirmModalOpen, setDeleteConfirmModalOpen] =
+    useState<boolean>(false)
+  const onDelete = () => {
+    if (!page.noteId) {
+      const toastId = toast.loading("Deleting...")
+      delStorage(`draft-${site.data?.characterId}-${page.draftKey}`)
+      Promise.all([
+        queryClient.refetchQueries(["getPagesBySite", site.data?.characterId]),
+        queryClient.refetchQueries(["getPage", page.characterId]),
+      ]).then(() => {
+        toast.success("Deleted!", {
+          id: toastId,
+        })
+      })
+    } else {
+      setDeleteToastId(toast.loading("Deleting..."))
+      deletePage.mutate({
+        noteId: page.noteId,
+        characterId: page.characterId,
+      })
+    }
+  }
+
   return (
-    <Menu.Items className="text-sm absolute z-20 right-0 bg-white shadow-modal rounded-lg overflow-hidden py-2 w-64 ring-1 ring-border">
-      {items.map((item) => {
-        return (
-          <Menu.Item key={item.text}>
-            <button
-              type="button"
-              className="h-10 flex w-full space-x-2 items-center px-3 hover:bg-gray-100"
-              onClick={(e) => {
-                e.preventDefault()
-                item.onClick()
-                onClose()
-              }}
-            >
-              <span className="inline-flex">{item.icon}</span>
-              <span>{t(item.text)}</span>
-            </button>
-          </Menu.Item>
-        )
-      })}
-    </Menu.Items>
+    <>
+      <Menu.Items className="text-sm absolute z-20 right-0 bg-white shadow-modal rounded-lg overflow-hidden py-2 w-64 ring-1 ring-border">
+        {items.map((item) => {
+          return (
+            <Menu.Item key={item.text}>
+              <button
+                type="button"
+                className="h-10 flex w-full space-x-2 items-center px-3 hover:bg-gray-100"
+                onClick={(e) => {
+                  e.preventDefault()
+                  item.onClick()
+                  onClose()
+                }}
+              >
+                <span className="inline-flex">{item.icon}</span>
+                <span>{t(item.text)}</span>
+              </button>
+            </Menu.Item>
+          )
+        })}
+      </Menu.Items>
+      <DeleteConfirmationModal
+        open={deleteConfirmModalOpen}
+        setOpen={setDeleteConfirmModalOpen}
+        onConfirm={onDelete}
+        type={type}
+      />
+    </>
   )
 }

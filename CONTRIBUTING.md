@@ -10,7 +10,7 @@ https://docs.github.com/en/get-started/quickstart/fork-a-repo
 
 ## Requirements
 
-- [Node.js](https://nodejs.org). Version needs to be >=15.
+- [Node.js](https://nodejs.org) 18.17 or later.
 - [pnpm](https://pnpm.io/) package manager.
 - [Docker](https://www.docker.com/) for running the cache database.
 
@@ -25,6 +25,10 @@ Follow the steps below to run it locally for the first time.
 5. Start dev server: `pnpm dev`
 
 The database is only needed for the first run, afterwards you just need to start the server `pnpm dev`
+
+## Claiming rewards
+
+We will provide some small gifts to contributors as a token of appreciation, currently including the [Honorary Badge](https://xlog.xlog.app/week14-2023#honorary-badges-for-outstanding-contributors) in xLog and special permissions on Discord. In the future, there will be additional rewards such as NFT achievements. Therefore, please do not forget to leave your xLog address and Discord ID when submitting a PR.
 
 ## Last words
 

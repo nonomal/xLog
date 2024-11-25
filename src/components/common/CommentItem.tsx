@@ -1,57 +1,101 @@
-import { Avatar } from "~/components/ui/Avatar"
-import { UniLink } from "~/components/ui/UniLink"
+"use client"
+
+import type { CharacterEntity, NoteEntity } from "crossbell"
+import { useTranslations } from "next-intl"
+import { useEffect, useState } from "react"
+
+import { useAccountState } from "@crossbell/connect-kit"
+import { useQueryClient } from "@tanstack/react-query"
+
+import { CharacterFloatCard } from "~/components/common/CharacterFloatCard"
+import { CommentInput } from "~/components/common/CommentInput"
+import { DeleteConfirmationModal } from "~/components/common/DeleteConfirmationModal"
+import MarkdownContent from "~/components/common/MarkdownContent"
+import { ReactionLike } from "~/components/common/ReactionLike"
+import { Titles } from "~/components/common/Titles"
 import { BlockchainIcon } from "~/components/icons/BlockchainIcon"
+import { Avatar } from "~/components/ui/Avatar"
+import { Button } from "~/components/ui/Button"
+import { UniLink } from "~/components/ui/UniLink"
+import { useDate } from "~/hooks/useDate"
 import { CSB_SCAN } from "~/lib/env"
 import { getSiteLink } from "~/lib/helpers"
-import { PageContent } from "~/components/common/PageContent"
-import { NoteEntity, CharacterEntity } from "crossbell.js"
-import { Button } from "~/components/ui/Button"
-import { Reactions } from "~/components/common/Reactions"
-import { useState } from "react"
-import { CommentInput } from "~/components/common/CommentInput"
-import { CharacterFloatCard } from "~/components/common/CharacterFloatCard"
-import { useTranslation } from "next-i18next"
-import { useDate } from "~/hooks/useDate"
-import { useAccountState } from "@crossbell/connect-kit"
-import { Titles } from "~/components/common/Titles"
+import { cn } from "~/lib/utils"
+import { useDeletePage } from "~/queries/page"
 
-export const CommentItem: React.FC<{
+export const CommentItem = ({
+  comment,
+  originalCharacterId,
+  originalNoteId,
+  depth,
+  className,
+}: {
   comment: NoteEntity & {
     character?: CharacterEntity | null
   }
-  originalId?: string
+  originalCharacterId?: number
+  originalNoteId?: number
   depth: number
-}> = ({ comment, originalId, depth }) => {
+  className?: string
+}) => {
   const [replyOpen, setReplyOpen] = useState(false)
   const [editOpen, setEditOpen] = useState(false)
+  const [deleteConfirmModalOpen, setDeleteConfirmModalOpen] = useState(false)
 
-  const { t } = useTranslation("common")
+  const t = useTranslations()
   const date = useDate()
+  const queryClient = useQueryClient()
+  const deletePage = useDeletePage()
 
   const account = useAccountState(({ computed }) => computed.account)
+
+  useEffect(() => {
+    queryClient.refetchQueries([
+      "getComments",
+      originalCharacterId,
+      originalNoteId,
+    ])
+  }, [deletePage.isSuccess, originalCharacterId, originalNoteId, queryClient])
 
   if (!comment.metadata?.content?.content) {
     return null
   }
 
+  const displayName = comment?.metadata?.content?.attributes?.find(
+    (attribute) => attribute.trait_type === "xlog_sender_name",
+  )?.value as string | undefined
+  const displayUrl = comment?.metadata?.content?.attributes?.find(
+    (attribute) => attribute.trait_type === "xlog_sender_url",
+  )?.value as string | undefined
+
   return (
-    <div className={depth > 0 ? "" : "border-b border-dashed pb-6"}>
+    <div
+      className={cn(depth > 0 ? "" : "border-b border-dashed pb-6", className)}
+    >
       <div className="flex group">
         <div>
           <CharacterFloatCard siteId={comment?.character?.handle}>
             <div>
               <UniLink
                 href={
-                  comment?.character?.handle &&
-                  getSiteLink({
-                    subdomain: comment.character.handle,
-                  })
+                  displayUrl ||
+                  (comment?.character?.handle &&
+                    getSiteLink({
+                      subdomain: comment.character.handle,
+                    }))
                 }
                 className="block align-middle mr-3"
               >
                 <Avatar
-                  images={comment?.character?.metadata?.content?.avatars || []}
-                  name={comment?.character?.metadata?.content?.name}
+                  cid={displayName || comment?.character?.characterId}
+                  images={
+                    displayName
+                      ? []
+                      : comment?.character?.metadata?.content?.avatars || []
+                  }
+                  name={
+                    displayName || comment?.character?.metadata?.content?.name
+                  }
                   size={45}
                 />
               </UniLink>
@@ -62,14 +106,15 @@ export const CommentItem: React.FC<{
           <div className="mb-1 text-sm flex items-center space-x-1">
             <UniLink
               href={
-                comment?.character?.handle &&
-                getSiteLink({
-                  subdomain: comment.character.handle,
-                })
+                displayUrl ||
+                (comment?.character?.handle &&
+                  getSiteLink({
+                    subdomain: comment.character.handle,
+                  }))
               }
               className="font-medium text-accent"
             >
-              {comment?.character?.metadata?.content?.name}
+              {displayName || comment?.character?.metadata?.content?.name}
             </UniLink>
             <Titles characterId={comment.characterId} />
             <span>·</span>
@@ -91,43 +136,78 @@ export const CommentItem: React.FC<{
               <BlockchainIcon className="inline-block" />
             </UniLink>
           </div>
-          <PageContent
+          <MarkdownContent
             content={comment.metadata?.content?.content}
-          ></PageContent>
+            strictMode={true}
+          ></MarkdownContent>
           <div className="mt-1 flex items-center">
-            <Reactions
-              className="inline-flex"
-              size="sm"
-              pageId={`${comment.characterId}-${comment.noteId}`}
-            />
+            <div
+              className="xlog-reactions fill-gray-400 text-gray-500 sm:items-center inline-flex text-sm space-x-3"
+              data-hide-print
+            >
+              <ReactionLike
+                size="sm"
+                characterId={comment.characterId}
+                noteId={comment.noteId}
+              />
+            </div>
             {depth < 2 && (
               <Button
-                className="text-gray-500 text-[13px] ml-1 mt-[-1px]"
+                className="text-gray-500 text-[13px] ml-1 -mt-px"
                 variant="text"
                 onClick={() => setReplyOpen(!replyOpen)}
               >
                 {t(`${replyOpen ? "Cancel " : ""}Reply`)}
-                <span className="ml-1">
-                  {(comment as any)?.fromNotes?.count || 0}
-                </span>
+                {!replyOpen && (
+                  <span className="ml-1">
+                    {(comment as any)?.fromNotes?.count || 0}
+                  </span>
+                )}
               </Button>
             )}
             {comment.characterId === account?.characterId && (
               <Button
-                className="text-gray-500 text-[13px] mt-[-1px]"
+                className="text-gray-500 text-[13px] -mt-px"
                 variant="text"
                 onClick={() => setEditOpen(!editOpen)}
               >
-                <i className="i-mingcute:edit-line mx-1" />{" "}
+                <i className="i-mingcute-edit-line mx-1" />{" "}
                 {t(`${editOpen ? "Cancel " : ""}Edit`)}
               </Button>
             )}
+            {comment.characterId === account?.characterId &&
+              !(comment as any)?.fromNotes?.list?.length && (
+                <>
+                  <Button
+                    className="text-gray-500 text-[13px] -mt-px"
+                    variant="text"
+                    onClick={() => setDeleteConfirmModalOpen(true)}
+                    isLoading={deletePage.isLoading}
+                  >
+                    <i className="i-mingcute-delete-2-line mx-1" />{" "}
+                    {t("Delete")}
+                  </Button>
+                  <DeleteConfirmationModal
+                    open={deleteConfirmModalOpen}
+                    setOpen={setDeleteConfirmModalOpen}
+                    onConfirm={() =>
+                      deletePage.mutate({
+                        noteId: comment.noteId,
+                        characterId: comment.characterId,
+                      })
+                    }
+                    type="comment"
+                  />
+                </>
+              )}
           </div>
           {replyOpen && (
             <div className="pt-6">
               <CommentInput
-                originalId={originalId}
-                pageId={`${comment.characterId}-${comment.noteId}`}
+                originalCharacterId={originalCharacterId}
+                originalNoteId={originalNoteId}
+                characterId={comment.characterId}
+                noteId={comment.noteId}
                 onSubmitted={() => setReplyOpen(false)}
               />
             </div>
@@ -135,8 +215,10 @@ export const CommentItem: React.FC<{
           {editOpen && (
             <div className="pt-6">
               <CommentInput
-                originalId={originalId}
-                pageId={`${comment.characterId}-${comment.noteId}`}
+                originalCharacterId={originalCharacterId}
+                originalNoteId={originalNoteId}
+                characterId={comment.characterId}
+                noteId={comment.noteId}
                 onSubmitted={() => setEditOpen(false)}
                 comment={comment}
               />
@@ -153,7 +235,8 @@ export const CommentItem: React.FC<{
               },
             ) => (
               <CommentItem
-                originalId={originalId}
+                originalCharacterId={originalCharacterId}
+                originalNoteId={originalNoteId}
                 comment={subcomment}
                 key={subcomment.transactionHash}
                 depth={depth + 1}

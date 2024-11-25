@@ -1,12 +1,13 @@
-import { Root } from "rehype-raw"
+import type { Root } from "hast"
 import { Plugin } from "unified"
 import { visit } from "unist-util-visit"
+
 import { toGateway } from "~/lib/ipfs-parser"
 
 const isExternLink = (url: string) => /^https?:\/\//.test(url)
 
 export const rehypeExternalLink: Plugin<Array<void>, Root> = () => {
-  return (tree) => {
+  return (tree: Root) => {
     visit(tree, { type: "element", tagName: "a" }, (node) => {
       if (!node.properties) return
 

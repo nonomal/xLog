@@ -1,17 +1,12 @@
-import { Root } from "rehype-raw"
+import type { Root } from "hast"
 import { Plugin } from "unified"
 import { u } from "unist-builder"
 import { visit } from "unist-util-visit"
 
 export const rehypeWrapCode: Plugin<Array<void>, Root> = () => {
-  return (tree) => {
+  return (tree: Root) => {
     visit(tree, { type: "element", tagName: "pre" }, (node, index, parent) => {
-      if (
-        parent &&
-        typeof index === "number" &&
-        // @ts-ignore
-        node?.properties?.className?.[0] !== "mermaid"
-      ) {
+      if (parent && typeof index === "number") {
         const wrapper = u("element", {
           tagName: "div",
           properties: {
@@ -28,7 +23,7 @@ export const rehypeWrapCode: Plugin<Array<void>, Root> = () => {
                 u("element", {
                   tagName: "span",
                   properties: {
-                    className: "i-mingcute:copy-2-line",
+                    className: "i-mingcute-copy-2-line",
                   },
                   children: [],
                 }),

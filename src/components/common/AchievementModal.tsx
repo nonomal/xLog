@@ -1,26 +1,34 @@
-import { Modal, Stepper } from "@mantine/core"
-import type { AchievementSection } from "~/models/site.model"
-import { Image } from "~/components/ui/Image"
+import { useTranslations } from "next-intl"
 import Tilt from "react-parallax-tilt"
-import { Badge } from "~/components/common/AchievementItem"
-import { Button } from "~/components/ui/Button"
-import { useMintAchievement } from "~/queries/site"
-import { useRouter } from "next/router"
-import { BlockchainIcon } from "~/components/icons/BlockchainIcon"
-import { useDate } from "~/hooks/useDate"
-import { useTranslation } from "next-i18next"
-import { cn } from "~/lib/utils"
 
-export const AchievementModal: React.FC<{
+import { Modal, Stepper } from "@mantine/core"
+
+import { Badge } from "~/components/common/AchievementItem"
+import { BlockchainIcon } from "~/components/icons/BlockchainIcon"
+import { Button } from "~/components/ui/Button"
+import { Image } from "~/components/ui/Image"
+import { useDate } from "~/hooks/useDate"
+import { cn } from "~/lib/utils"
+import type { AchievementSection } from "~/models/site.model"
+import { useMintAchievement } from "~/queries/site"
+
+export const AchievementModal = ({
+  opened,
+  setOpened,
+  group,
+  layoutId,
+  isOwner,
+  characterId,
+}: {
   opened: boolean
   setOpened: (value: boolean) => void
   group: AchievementSection["groups"][number]
   layoutId: string
   isOwner: boolean
-  characterId?: string
-}> = ({ opened, setOpened, group, layoutId, isOwner, characterId }) => {
+  characterId?: number
+}) => {
   const date = useDate()
-  const { t } = useTranslation("common")
+  const t = useTranslations()
 
   const achievement = group.items
     .filter((item) => item.status === "MINTED")
@@ -30,20 +38,27 @@ export const AchievementModal: React.FC<{
     ? group.items.filter((item) => item.status === "MINTABLE").pop()
     : null
 
-  const achievementComming = isOwner
-    ? group.items.filter((item) => item.status === "COMMING").pop()
+  const achievementComing = isOwner
+    ? group.items.filter((item) => item.status === "COMING").pop()
     : null
 
   const mintAchievement = useMintAchievement()
 
   const mint = async (tokenId: number) => {
     if (characterId) {
-      await mintAchievement.mutate({
+      mintAchievement.mutate({
         characterId,
         achievementId: tokenId,
       })
     }
   }
+
+  const reversedItems = [...group.items].reverse()
+  const reversedIndex = reversedItems.findIndex(
+    (item) => item.status === "MINTED",
+  )
+  const targetIndex =
+    reversedIndex === -1 ? -1 : group.items.length - reversedIndex
 
   return (
     <Modal
@@ -73,12 +88,11 @@ export const AchievementModal: React.FC<{
         <div
           className="inline-flex flex-col text-center items-center text-white"
           key={
-            (achievement || achievementMintable || achievementComming)!.info
-              .name
+            (achievement || achievementMintable || achievementComing)!.info.name
           }
         >
           <Tilt
-            className={`inline-block w-80 h-80 relative rounded-full bg-white mb-4 preserve-3d shadow-[inset_#a8a29e_34px_-34px_74px] p-[4%] ${
+            className={`inline-block size-80 relative rounded-full bg-white mb-4 preserve-3d shadow-[inset_#a8a29e_34px_-34px_74px] p-[4%] ${
               !achievement && "grayscale"
             }`}
             trackOnWindow={true}
@@ -93,10 +107,10 @@ export const AchievementModal: React.FC<{
               fill
               alt="achievement"
               src={
-                (achievement || achievementMintable || achievementComming)!.info
+                (achievement || achievementMintable || achievementComing)!.info
                   .media
               }
-              className="relative w-full h-full"
+              className="relative size-full"
               style={{
                 transform: "translateZ(20px)",
               }}
@@ -108,7 +122,7 @@ export const AchievementModal: React.FC<{
             </span>
             <span className="text-lg text-black capitalize truncate">
               {
-                (achievement || achievementMintable || achievementComming)!.info
+                (achievement || achievementMintable || achievementComing)!.info
                   .description
               }
             </span>
@@ -138,20 +152,18 @@ export const AchievementModal: React.FC<{
                   </span>
                 </>
               ) : (
-                t(achievementMintable ? "Mintable" : "Comming soon")
+                t(achievementMintable ? "Mintable" : "Coming soon")
               )}
             </span>
           </div>
         </div>
         <div className="mt-8 hidden sm:block h-24">
           <Stepper
-            active={
-              group.items.findLastIndex((item) => item.status === "MINTED") + 1
-            }
+            active={targetIndex}
             color="var(--theme-color)"
             size="sm"
             iconSize={42}
-            styles={(theme) => ({
+            styles={{
               stepLabel: {
                 color: "#fff",
                 textTransform: "capitalize",
@@ -173,7 +185,7 @@ export const AchievementModal: React.FC<{
               stepIcon: {
                 border: "none",
               },
-            })}
+            }}
           >
             {group.items.map((item) => {
               const icon = (

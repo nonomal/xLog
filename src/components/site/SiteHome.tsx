@@ -1,130 +1,83 @@
-import Link from "next/link"
-import { useDate } from "~/hooks/useDate"
-import { Notes } from "~/lib/types"
-import { EmptyState } from "../ui/EmptyState"
-import { useRouter } from "next/router"
-import { Image } from "~/components/ui/Image"
-import { Button } from "~/components/ui/Button"
-import { useTranslation } from "next-i18next"
-import { useEffect, useState } from "react"
+"use client"
 
-export const SiteHome: React.FC<{
-  postPages?: Notes[]
-  fetchNextPage: () => void
-  hasNextPage?: boolean
-  isFetchingNextPage?: boolean
-}> = ({ postPages, fetchNextPage, hasNextPage, isFetchingNextPage }) => {
-  const router = useRouter()
-  const { t } = useTranslation(["common", "site"])
-  const date = useDate()
+import { useState } from "react"
 
-  const [isMounted, setIsMounted] = useState(false)
+import PostList from "~/components/site/PostList"
+import { Tabs, type TabItem } from "~/components/ui/Tabs"
+import { NoteType, PagesSortTypes, PageVisibilityEnum } from "~/lib/types"
+import { useGetPagesBySiteLite, usePinnedPage } from "~/queries/page"
+import { useGetSite } from "~/queries/site"
 
-  useEffect(() => {
-    setIsMounted(true)
-  }, [])
+import { Loading } from "../common/Loading"
 
-  if (!postPages?.length) return null
+export default function SiteHome({
+  handle,
+  type,
+}: {
+  handle: string
+  type?: NoteType
+}) {
+  const site = useGetSite(handle)
+  const [sortType, setSortType] = useState<PagesSortTypes>("latest")
+  const posts = useGetPagesBySiteLite({
+    characterId: site.data?.characterId,
+    type: type || ["post", "portfolio"],
+    visibility: PageVisibilityEnum.Published,
+    useStat: true,
+    limit: type === "short" ? 20 : 18,
+    sortType: sortType,
+  })
+  const pinnedPage = usePinnedPage({ characterId: site.data?.characterId })
 
-  let currentLength = 0
+  let tabs: TabItem[]
+  switch (type) {
+    case "portfolio":
+      tabs = []
+      break
+    case "short":
+      tabs = [
+        {
+          text: "Latest",
+          onClick: () => setSortType("latest"),
+          active: sortType === "latest",
+        },
+        {
+          text: "Most Commented",
+          onClick: () => setSortType("commented"),
+          active: sortType === "commented",
+        },
+      ]
+      break
+    default:
+      tabs = [
+        {
+          text: "Latest",
+          onClick: () => setSortType("latest"),
+          active: sortType === "latest",
+        },
+        {
+          text: "Hottest",
+          onClick: () => setSortType("hottest"),
+          active: sortType === "hottest",
+        },
+        {
+          text: "Most Commented",
+          onClick: () => setSortType("commented"),
+          active: sortType === "commented",
+        },
+      ]
+      break
+  }
 
   return (
     <>
-      {!postPages[0].total && <EmptyState />}
-      {!!postPages[0].total && (
-        <div className="xlog-posts space-y-8">
-          {postPages.map((posts) =>
-            posts.list.map((post) => {
-              currentLength++
-              return (
-                <Link
-                  key={post.id}
-                  href={`/${post.slug || post.id}`}
-                  className="xlog-post sm:hover:bg-hover bg-white transition-all px-5 py-7 -mx-5 first:-mt-5 sm:rounded-xl flex flex-col sm:flex-row items-center"
-                >
-                  <div className="flex-1 flex justify-center flex-col w-full min-w-0">
-                    <h3 className="xlog-post-title text-2xl font-bold text-zinc-700">
-                      {post.title}
-                    </h3>
-                    <div className="xlog-post-meta text-sm text-zinc-400 mt-1 space-x-4 flex items-center mr-8">
-                      <time
-                        dateTime={date.formatToISO(post.date_published)}
-                        className="xlog-post-date whitespace-nowrap"
-                      >
-                        {date.formatDate(
-                          post.date_published,
-                          undefined,
-                          isMounted ? undefined : "America/Los_Angeles",
-                        )}
-                      </time>
-                      {!!post.tags?.filter(
-                        (tag) => tag !== "post" && tag !== "page",
-                      ).length && (
-                        <span className="xlog-post-tags space-x-1 truncate min-w-0">
-                          {post.tags
-                            ?.filter((tag) => tag !== "post" && tag !== "page")
-                            .map((tag) => (
-                              <span
-                                className="hover:text-zinc-600"
-                                key={tag}
-                                onClick={(e) => {
-                                  e.preventDefault()
-                                  router.push(`/tag/${tag}`)
-                                }}
-                              >
-                                #{tag}
-                              </span>
-                            ))}
-                        </span>
-                      )}
-                      <span className="xlog-post-views inline-flex items-center">
-                        <i className="i-mingcute:eye-line mr-[2px]" />
-                        <span>{post.views}</span>
-                      </span>
-                    </div>
-                    <div
-                      className="xlog-post-excerpt mt-3 text-zinc-500 line-clamp-2"
-                      style={{
-                        wordBreak: "break-word",
-                      }}
-                    >
-                      {post.summary?.content}
-                      {post.summary?.content && "..."}
-                    </div>
-                  </div>
-                  {post.cover && (
-                    <div className="xlog-post-cover flex items-center relative w-full sm:w-24 h-40 sm:h-24 mt-2 sm:ml-4 sm:mt-0">
-                      <Image
-                        className="object-cover rounded"
-                        alt="cover"
-                        fill={true}
-                        src={post.cover}
-                      ></Image>
-                    </div>
-                  )}
-                </Link>
-              )
-            }),
-          )}
-        </div>
-      )}
-      {hasNextPage && (
-        <Button
-          className="mt-8 w-full bg-zinc-50 text-sm"
-          variant="text"
-          onClick={fetchNextPage}
-          isLoading={isFetchingNextPage}
-          aria-label="load more"
-        >
-          {t("load more", {
-            ns: "site",
-            name: t(
-              "post" + (postPages[0].total - currentLength > 1 ? "s" : ""),
-            ),
-            count: postPages[0].total - currentLength,
-          })}
-        </Button>
-      )}
+      <Tabs items={tabs} className="mb-6" type="rounded" />
+      {!posts.data?.pages?.length && posts.isLoading && <Loading />}
+      <PostList
+        posts={posts}
+        pinnedNoteId={pinnedPage.noteId}
+        isShorts={type === "short"}
+      />
     </>
   )
 }

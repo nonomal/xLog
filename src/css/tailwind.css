@@ -3,15 +3,21 @@
 @tailwind utilities;
 
 @layer base {
-  html {
-    @apply text-zinc-800;
-    @apply fill-zinc-800;
+  body {
+    @apply !text-zinc-800;
+    @apply !fill-zinc-800;
     font-family: var(--font-fans);
   }
 
   input,
   textarea {
     @apply bg-white;
+  }
+}
+
+@layer utilities {
+  .focus-ring {
+    @apply focus-visible:outline focus-visible:outline-accent;
   }
 }
 
@@ -25,7 +31,7 @@ html.dark {
   color-scheme: dark;
 }
 
-::-webkit-scrollbar {
+/* ::-webkit-scrollbar {
   width: 10px;
   height: 10px;
   background: theme("colors.white");
@@ -48,7 +54,7 @@ html.dark {
   background-color: var(--theme-color);
   border: 3px solid theme("colors.white");
   border-radius: 5px;
-}
+} */
 
 body {
   @apply break-words bg-white;
@@ -84,16 +90,18 @@ a {
   @apply inline-flex;
   @apply items-center;
   @apply justify-center;
-  @apply h-8;
+  @apply h-9;
   @apply px-5;
   @apply min-w-[100px];
   @apply whitespace-nowrap;
   @apply font-medium;
   @apply transition;
   @apply active:scale-95;
+  @apply focus-ring focus-within:ring-offset-1;
 }
 
-.button.is-auto-width {
+.button.is-auto-width,
+.button.codicon {
   @apply min-w-[auto];
 }
 
@@ -118,6 +126,8 @@ a {
   border-bottom-color: currentColor;
   border-right-color: currentColor;
   @apply animate-spin;
+  @apply inline-block;
+  @apply align-middle;
 }
 
 .button.is-block {
@@ -148,7 +158,7 @@ a {
 }
 
 .button.is-text {
-  @apply shadow-none py-0 px-2;
+  @apply shadow-none py-0 px-3;
   @apply min-w-0;
   @apply hover:bg-hover;
   @apply transition-colors;
@@ -161,43 +171,62 @@ a {
   @apply fill-black;
 }
 
-.button.is-like {
+.button.is-like,
+.button.is-collect,
+.button.is-tip,
+.button.is-share,
+.button.is-comment {
   @apply shadow-none p-0;
-  @apply text-gray-500 fill-gray-500;
+  @apply text-gray-500;
 }
+.button.is-like.is-light,
+.button.is-collect.is-light,
+.button.is-tip.is-light,
+.button.is-share.is-light,
+.button.is-comment.is-light {
+  @apply text-gray-400;
+}
+.button.is-like.is-light.is-loading:before,
+.button.is-collect.is-light.is-loading:before,
+.button.is-tip.is-light.is-loading:before,
+.button.is-share.is-light.is-loading:before,
+.button.is-comment.is-light.is-loading:before {
+  margin-right: 0;
+}
+
 .button.is-like:hover {
   color: #f91880;
-  fill: #f91880;
 }
 .button.is-like.active {
   color: #f91880;
-  fill: #f91880;
 }
 
-.button.is-collect {
-  @apply shadow-none p-0;
-  @apply text-gray-500 fill-gray-500;
-}
 .button.is-collect:hover {
   color: #ffcf55;
-  fill: #ffcf55;
 }
 .button.is-collect.active {
   color: #ffcf55;
-  fill: #ffcf55;
 }
 
-.button.is-tip {
-  @apply shadow-none p-0;
-  @apply text-gray-500 fill-gray-500;
-}
 .button.is-tip:hover {
-  color: #ef4444;
-  fill: #ef4444;
+  color: #facc15;
 }
 .button.is-tip.active {
-  color: #ef4444;
-  fill: #ef4444;
+  color: #facc15;
+}
+
+.button.is-share:hover {
+  color: #0ea5e9;
+}
+.button.is-share.active {
+  color: #0ea5e9;
+}
+
+.button.is-comment:hover {
+  @apply text-green-500;
+}
+.button.is-comment.active {
+  @apply text-green-500;
 }
 
 .button.is-crossbell {
@@ -289,6 +318,11 @@ a {
   @apply border-accent;
 }
 
+.monaco-inputbox .input:focus {
+  @apply shadow-none;
+  --tw-ring-shadow: none;
+}
+
 .input.is-block {
   @apply w-full;
 }
@@ -341,12 +375,6 @@ textarea.input {
   @apply bg-yellow-500;
 }
 
-.page-title {
-  @apply relative;
-  @apply text-3xl;
-  @apply font-extrabold;
-}
-
 .xlog-site-description a {
   @apply underline;
 }
@@ -362,19 +390,6 @@ textarea.input {
 
 .xlog-banner {
   background-color: var(--banner-bg-color);
-}
-
-#nprogress .bar {
-  @apply bg-accent !important;
-}
-
-#nprogress .peg {
-  @apply shadow-none !important;
-}
-
-#nprogress .spinner-icon {
-  @apply border-t-accent !important;
-  @apply border-l-accent !important;
 }
 
 .loading:before {
@@ -394,6 +409,28 @@ textarea.input {
   @apply fill-current;
 }
 
-.katex-html {
-  @apply overflow-x-auto;
+.xlog-post-toc .katex {
+  font: unset;
+  line-height: unset;
+}
+
+/* For users to use within posts */
+.center {
+  @apply flex justify-center;
+}
+
+.right {
+  @apply flex justify-end;
+}
+
+.swiper {
+  @apply bg-zinc-50;
+}
+
+.swiper-button {
+  @apply absolute top-1/2 -translate-y-1/2 bg-white rounded-full z-[1] w-6 h-6 flex items-center justify-center opacity-80;
+}
+
+.swiper-wrapper {
+  @apply flex items-center;
 }

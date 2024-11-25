@@ -1,6 +1,7 @@
-import type { Note as UniNote, Profile as UniProfile } from "unidata.js"
-import { ReactElement } from "react"
-import { NoteEntity } from "crossbell.js"
+import type { CharacterEntity, NoteEntity } from "crossbell"
+import type { BundledTheme } from "shiki/themes"
+
+export type Language = Readonly<"en" | "zh" | "zh-TW" | "ja">
 
 export type Site = {
   id: string
@@ -26,9 +27,10 @@ export enum PageVisibilityEnum {
   Published = "published",
   Scheduled = "scheduled",
   Draft = "draft",
-  Crossbell = "crossbell",
   Modified = "published and local modified",
 }
+
+export type PagesSortTypes = "latest" | "hottest" | "commented"
 
 export type PostOnSiteHome = {
   id: string
@@ -75,55 +77,89 @@ export type SiteNavigationItem = {
   url: string
 }
 
-export type Note = UniNote & {
-  slug?: string
-  character?: Profile
-  cover?: string
-  body?: {
-    content?: string
-    address?: string
-    mime_type?: string
-    element?: ReactElement
-  }
-  preview?: boolean
-  views?: number
+export type PortfolioStats = {
+  videoViewsCount?: number
+  audioListensCount?: number
+  projectStarsCount?: number
+  textViewsCount?: number
+  commentsCount?: number
 }
 
 export type ExpandedNote = NoteEntity & {
+  draftKey?: string
   metadata: {
     content: {
       summary?: string
       cover?: string
+      images?: string[]
+      imageDimensions?: Record<string, { width: number; height: number }>
       frontMatter?: Record<string, any>
       slug?: string
-      views?: number
+      audio?: string
       score?: {
         number?: number
         reason?: string
       }
+      contentHTML?: string
+      disableAISummary?: boolean
+      readingTime?: number
+      translatedFrom?: Language
+      translatedTo?: Language
     }
   }
   stat?: {
-    viewDetailCount: number
+    viewDetailCount?: number
     hotScore?: number
+    portfolio?: PortfolioStats
+    commentsCount?: number
+    likesCount?: number
+  }
+  local?: boolean
+}
+
+export type ExpandedCharacter = CharacterEntity & {
+  metadata: {
+    content: {
+      footer?: string
+      navigation?: SiteNavigationItem[]
+      css?: string
+      ga?: string
+      ua?: string
+      uh?: string
+      custom_domain?: string
+      site_name?: string
+      code_theme?: {
+        light?: BundledTheme
+        dark?: BundledTheme
+      }
+      follow?: {
+        feed_id?: string
+        user_id?: string
+      }
+    }
   }
 }
 
-export type Notes = {
-  total: number
-  list: Note[]
-  cursor?: string
-}
+export type ColorScheme = "dark" | "light"
 
-export type Profile = UniProfile & {
-  navigation?: SiteNavigationItem[]
-  css?: string
-  ga?: string
-  custom_domain?: string
-  description?: string
-}
+export type NoteType = "post" | "page" | "portfolio" | "short"
 
-export type Profiles = {
-  total: number
-  list: Note[]
+export type EditorValues = {
+  title?: string
+  publishedAt?: string
+  published?: boolean
+  excerpt?: string
+  slug?: string
+  tags?: string
+  content?: string
+  cover?: {
+    address?: string
+    mime_type?: string
+  }
+  disableAISummary?: boolean
+  externalUrl?: string
+  images?: {
+    address?: string
+    mime_type?: string
+  }[]
 }

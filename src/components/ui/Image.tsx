@@ -1,22 +1,82 @@
-import React from "react"
-import { default as NextImage, ImageProps } from "next/image"
+"use client"
+
+import { ImageProps, default as NextImage } from "next/image"
+import React, { useEffect } from "react"
+
+import { useGetState } from "~/hooks/useGetState"
+import { useIsMobileLayout } from "~/hooks/useMobileLayout"
+import { IPFS_GATEWAY } from "~/lib/env"
 import { toGateway, toIPFS } from "~/lib/ipfs-parser"
 
-export const Image: React.FC<
-  {
-    className?: string
-    src?: string
-    width?: number | string
-    height?: number | string
-    "original-src"?: string
-    imageRef?: React.Ref<HTMLImageElement>
-  } & React.HTMLAttributes<HTMLImageElement> &
-    ImageProps
-> = ({ fill, className, alt, src, width, height, imageRef, ...props }) => {
+export type TImageProps = {
+  className?: string
+  src?: string
+  width?: number | string
+  height?: number | string
+  "original-src"?: string
+  imageRef?: React.MutableRefObject<HTMLImageElement>
+  zoom?: boolean
+  blurDataURL?: string
+  placeholder?: "blur"
+} & React.HTMLAttributes<HTMLImageElement> &
+  ImageProps
+
+export const Image = ({
+  fill,
+  className,
+  alt,
+  src,
+  width,
+  height,
+  imageRef,
+  zoom,
+  blurDataURL,
+  placeholder,
+  ...props
+}: TImageProps) => {
   src = toIPFS(src)
   const [paddingTop, setPaddingTop] = React.useState("0")
   const [autoWidth, setAutoWidth] = React.useState(0)
   const noOptimization = className?.includes("no-optimization")
+  const imageRefInternal = React.useRef<HTMLImageElement>(null)
+
+  const isMobileLayout = useIsMobileLayout()
+  const getSrc = useGetState(src)
+
+  useEffect(() => {
+    if (!imageRef) return
+    if (!imageRefInternal.current) return
+
+    if (typeof imageRef === "object") {
+      imageRef.current = imageRefInternal.current
+    }
+  }, [imageRef])
+
+  useEffect(() => {
+    const $image = imageRefInternal.current
+    if (!$image) return
+    if (zoom) {
+      if (isMobileLayout !== undefined) {
+        if (isMobileLayout) {
+          const clickHandler = () => {
+            window.open(toGateway(getSrc()), "_blank")
+          }
+          $image.addEventListener("click", clickHandler)
+          return () => {
+            $image.removeEventListener("click", clickHandler)
+          }
+        } else {
+          import("medium-zoom").then(({ default: mediumZoom }) => {
+            mediumZoom($image, {
+              margin: 10,
+              background: "rgb(var(--tw-color-white))",
+              scrollOffset: 0,
+            })
+          })
+        }
+      }
+    }
+  }, [zoom, isMobileLayout])
 
   if (!src) {
     return null
@@ -57,11 +117,11 @@ export const Image: React.FC<
           setAutoWidth(naturalWidth)
         }
       }}
-      ref={imageRef}
+      ref={imageRefInternal}
     />
   ) : (
     <span
-      className="inline-block w-full h-full overflow-hidden"
+      className="inline-flex justify-center size-full overflow-hidden"
       style={
         autoSize
           ? {
@@ -71,7 +131,7 @@ export const Image: React.FC<
       }
     >
       <span
-        className="inline-flex justify-center relative w-full h-full"
+        className="inline-flex justify-center relative size-full"
         style={autoSize ? { paddingTop } : {}}
       >
         <NextImage
@@ -82,6 +142,8 @@ export const Image: React.FC<
           width={width}
           height={height}
           fill={fill || autoSize}
+          blurDataURL={blurDataURL}
+          placeholder={placeholder}
           onLoad={({ target }) => {
             if (autoSize) {
               const { naturalWidth, naturalHeight } = target as HTMLImageElement
@@ -89,7 +151,27 @@ export const Image: React.FC<
               setAutoWidth(naturalWidth)
             }
           }}
-          ref={imageRef}
+          ref={imageRefInternal}
+          loader={
+            src.startsWith("ipfs://") &&
+            IPFS_GATEWAY === "https://ipfs.crossbell.io/ipfs/"
+              ? ({ src, width, quality }) => {
+                  // https://docs.filebase.com/ipfs/about-ipfs/ipfs-gateways#filebase-ipfs-image-optimization
+                  try {
+                    const urlObj = new URL(src)
+                    urlObj.searchParams.set("img-quality", (quality || 75) + "")
+                    urlObj.searchParams.set("img-format", "auto")
+                    urlObj.searchParams.set("img-onerror", "redirect")
+                    if (width) {
+                      urlObj.searchParams.set("img-width", width + "")
+                    }
+                    return urlObj.toString()
+                  } catch (error) {
+                    return src
+                  }
+                }
+              : undefined
+          }
         />
       </span>
     </span>

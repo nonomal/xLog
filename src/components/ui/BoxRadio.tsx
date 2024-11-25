@@ -1,16 +1,16 @@
-import { cn } from "~/lib/utils"
+import { nanoid } from "nanoid"
+import { useTranslations } from "next-intl"
 import React, {
   ChangeEvent,
-  FocusEvent,
   Dispatch,
+  FocusEvent,
   SetStateAction,
   useMemo,
   useState,
 } from "react"
-import { UniLink } from "./UniLink"
-import { useTranslation } from "next-i18next"
-import { nanoid } from "nanoid"
+
 import { Input } from "~/components/ui/Input"
+import { cn } from "~/lib/utils"
 
 export type RadioItem = {
   text: string
@@ -18,12 +18,16 @@ export type RadioItem = {
   default?: boolean
 }
 
-export const BoxRadio: React.FC<{
+export const BoxRadio = ({
+  value,
+  setValue,
+  items,
+}: {
   value: string
   setValue: Dispatch<SetStateAction<string>>
   items: RadioItem[]
-}> = ({ value, setValue, items }) => {
-  const { t } = useTranslation(["common"])
+}) => {
+  const t = useTranslations()
   const randomId = useMemo(() => nanoid(), [])
   const [isCustom, setIsCustom] = useState(false)
 
@@ -51,7 +55,7 @@ export const BoxRadio: React.FC<{
               <>
                 <input
                   className={cn(
-                    "opacity-0 absolute left-0 right-0 top-0 bottom-0 pointer-events-none",
+                    "opacity-0 absolute inset-0 pointer-events-none",
                   )}
                   type="radio"
                   id={`${randomId}-${item.value}`}
@@ -62,7 +66,7 @@ export const BoxRadio: React.FC<{
                 />
                 <label
                   className={cn(
-                    "absolute left-0 right-0 top-0 bottom-0 flex items-center justify-center rounded-lg cursor-pointer border",
+                    "absolute inset-0 flex items-center justify-center rounded-lg cursor-pointer border",
                     value === item.value
                       ? "border-accent border-2 text-accent"
                       : "",

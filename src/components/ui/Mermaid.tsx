@@ -1,15 +1,26 @@
-import { FC, useEffect, useState } from "react"
-import { useIsDark } from "~/hooks/useDarkMode"
-import { useIsUnmounted } from "~/hooks/useLifecycle"
-import { nanoid } from "nanoid"
+"use client"
 
-export const Mermaid: FC<{
-  children: [string]
-}> = (props) => {
+import type { Element } from "hast"
+import { toText } from "hast-util-to-text"
+import { nanoid } from "nanoid"
+import { memo, useEffect, useState } from "react"
+
+import { useIsDark } from "~/hooks/useDarkMode"
+
+import AdvancedImage from "./AdvancedImage"
+
+const Mermaid = memo(function Mermaid(props: {
+  children: string
+  node: Element
+}) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
   const [svg, setSvg] = useState("")
-  const isUnmounted = useIsUnmounted()
+  const [width, setWidth] = useState<number>()
+  const [height, setHeight] = useState<number>()
+  const text = toText(props.node, {
+    whitespace: "pre",
+  })
 
   const isDark = useIsDark()
 
@@ -23,7 +34,7 @@ export const Mermaid: FC<{
   }, [isDark])
 
   useEffect(() => {
-    if (props.children?.[0]) {
+    if (text) {
       setError("")
       setLoading(true)
 
@@ -32,34 +43,50 @@ export const Mermaid: FC<{
         const id = nanoid()
         let result
         try {
-          result = await mermaid.render(`mermaid-${id}`, props.children[0])
+          result = await mermaid.render(`mermaid-${id}`, text)
         } catch (error) {
+          document.getElementById(`dmermaid-${id}`)?.remove()
           if (error instanceof Error) {
             setError(error.message)
           }
           setSvg("")
+          setWidth(undefined)
+          setHeight(undefined)
         }
-
-        if (isUnmounted()) return
 
         if (result) {
           setSvg(result.svg)
+
+          const match = result.svg.match(/viewBox="[^"]*\s([\d.]+)\s([\d.]+)"/)
+          if (match?.[1] && match?.[2]) {
+            setWidth(parseInt(match?.[1]))
+            setHeight(parseInt(match?.[2]))
+          }
           setError("")
         }
         setLoading(false)
       })
     }
-  }, [props.children])
+  }, [text])
 
   return loading ? (
-    <div className="h-[50px] rounded-lg flex items-center justify-center bg-[#ECECFD] dark:bg-[#1F2020] text-sm">
+    <div className="min-h-[50px] rounded-lg flex items-center justify-center bg-[#ECECFD] dark:bg-[#1F2020] text-sm">
       Mermaid Loading...
     </div>
   ) : svg ? (
-    <div dangerouslySetInnerHTML={{ __html: svg }} />
+    <div>
+      <AdvancedImage
+        alt="mermaid"
+        src={"data:image/svg+xml;base64," + Buffer.from(svg).toString("base64")}
+        width={width}
+        height={height}
+      />
+    </div>
   ) : (
-    <div className="h-[50px] rounded-lg flex items-center justify-center bg-red-100 text-sm">
+    <div className="min-h-[50px] rounded-lg flex items-center justify-center bg-red-100 text-sm">
       {error || "Error"}
     </div>
   )
-}
+})
+
+export default Mermaid

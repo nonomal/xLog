@@ -1,57 +1,76 @@
-import { Image } from "~/components/ui/Image"
-import { UniLink } from "~/components/ui/UniLink"
+"use client"
+
+import { useDebounceEffect } from "ahooks"
+import { useEffect, useState } from "react"
+
 import { Tooltip } from "~/components/ui/Tooltip"
+import { UniLink } from "~/components/ui/UniLink"
 import { cn } from "~/lib/utils"
 
-const syncMap: {
+const iconCDN = "https://icons.ly"
+
+// There is no need to set this icon if it is available by default `https://cdn.simpleicons.org/${platform}`
+export const PlatformsSyncMap: {
   [key: string]: {
     name: string
-    icon: string
+    icon?: string
     url?: string
+    identityFormatTemplate?: string
+    portfolioDomain?: string
   }
 } = {
   telegram: {
     name: "Telegram",
-    icon: "/assets/social/telegram.svg",
     url: "https://t.me/{username}",
   },
   tg_channel: {
     name: "Telegram Channel",
-    icon: "/assets/social/telegram.svg",
+    icon: `${iconCDN}/telegram`,
     url: "https://t.me/{username}",
   },
   twitter: {
-    name: "Twitter",
-    icon: "/assets/social/twitter.svg",
-    url: "https://twitter.com/{username}",
+    name: "X",
+    icon: `${iconCDN}/x`,
+    url: "https://x.com/{username}",
+    portfolioDomain: `https://x.com/`,
   },
   twitter_id: {
-    name: "Twitter",
-    icon: "/assets/social/twitter.svg",
-    url: "https://twitter.com/i/user/{username}",
+    name: "X",
+    icon: `${iconCDN}/x`,
+    url: "https://x.com/i/user/{username}",
+  },
+  x: {
+    name: "X",
+    icon: `${iconCDN}/x/_/fff`,
+    url: "https://x.com/{username}",
+    portfolioDomain: `https://x.com/`,
+  },
+  x_id: {
+    name: "X",
+    icon: `${iconCDN}/x/_/fff`,
+    url: "https://x.com/i/user/{username}",
   },
   pixiv: {
     name: "Pixiv",
-    icon: "/assets/social/pixiv.ico",
     url: "https://www.pixiv.net/users/{username}",
+    portfolioDomain: `https://www.pixiv.net/`,
   },
   substack: {
     name: "Substack",
-    icon: "/assets/social/substack.svg",
     url: "https://{username}.substack.com/",
   },
   medium: {
     name: "Medium",
-    icon: "/assets/social/medium.svg",
     url: "https://medium.com/@{username}",
   },
   github: {
     name: "GitHub",
-    icon: "/assets/social/github.svg",
+    icon: `${iconCDN}/github/_/fff`,
     url: "https://github.com/{username}",
+    portfolioDomain: `https://github.com/`,
   },
   jike: {
-    name: "Jike",
+    name: "即刻",
     icon: "/assets/social/jike.png",
     url: "https://web.okjike.com/u/{username}",
   },
@@ -59,48 +78,235 @@ const syncMap: {
     name: "bilibili",
     icon: "/assets/social/bilibili.svg",
     url: "https://space.bilibili.com/{username}",
+    portfolioDomain: `https://www.bilibili.com/`,
+  },
+  zhihu: {
+    name: "知乎",
+    url: "https://www.zhihu.com/people/{username}",
   },
   playstation: {
     name: "PlayStation",
-    icon: "/assets/social/playstation.svg",
     url: "https://psnprofiles.com/{username}",
   },
   "nintendo switch": {
     name: "Nintendo Switch",
-    icon: "/assets/social/nintendo_switch.svg",
+    icon: `${iconCDN}/nintendoswitch`,
   },
   "discord server": {
     name: "Discord Server",
-    icon: "/assets/social/discord.svg",
+    icon: `${iconCDN}/discord`,
     url: "https://discord.gg/{username}",
+  },
+  "discord user": {
+    name: "Discord User",
+    icon: `${iconCDN}/discord`,
+    url: "https://discord.com/users/{username}",
+  },
+  xiaoyuzhou: {
+    name: "小宇宙播客",
+    icon: "/assets/social/xiaoyuzhou2.png",
+    url: "https://www.xiaoyuzhoufm.com/podcast/{username}",
+    portfolioDomain: `https://www.xiaoyuzhoufm.com/`,
+  },
+  steam: {
+    name: "Steam",
+    url: "https://steamcommunity.com/id/{username}",
+  },
+  steam_profiles: {
+    name: "Steam",
+    icon: `${iconCDN}/steam`,
+    url: "https://steamcommunity.com/profiles/{username}",
+  },
+  gitlab: {
+    name: "Gitlab",
+    url: "https://gitlab.com/{username}",
+  },
+  keybase: {
+    name: "Keybase",
+    url: "https://keybase.io/{username}",
+  },
+  youtube: {
+    name: "Youtube",
+    url: "https://youtube.com/@{username}",
+    portfolioDomain: `https://youtube.com/`,
+  },
+  facebook: {
+    name: "Facebook",
+    url: "https://facebook.com/{username}",
+  },
+  whatsapp: {
+    name: "Whatsapp",
+    url: "https://wa.me/{username}",
+  },
+  mastodon: {
+    name: "Mastodon",
+    url: "https://{instance}/@{username}",
+    identityFormatTemplate: "username@instance.ltd",
+  },
+  misskey: {
+    name: "Misskey",
+    url: "https://{instance}/@{username}",
+    identityFormatTemplate: "username@instance.ltd",
+  },
+  pleroma: {
+    name: "Pleroma",
+    url: "https://{instance}/users/{username}",
+    identityFormatTemplate: "username@instance.ltd",
+  },
+  douban: {
+    name: "豆瓣",
+    icon: "/assets/social/douban.png",
+    url: "https://www.douban.com/people/{username}",
+  },
+  email: {
+    name: "Email",
+    icon: "/assets/social/email.png",
+    url: "mailto:{username}",
+  },
+  "500px": {
+    name: "500px",
+    url: "https://500px.com/p/{username}",
+  },
+  threads: {
+    name: "Threads",
+    icon: `${iconCDN}/threads`,
+    url: "https://www.threads.net/@{username}",
+  },
+  instagram: {
+    name: "Instagram",
+    icon: `${iconCDN}/instagram`,
+    url: "https://www.instagram.com/{username}",
+  },
+  phaver: {
+    name: "Phaver",
+    icon: "/assets/social/phaver.png",
+    url: "https://phaver.app.link/{username}",
+  },
+  warpcast: {
+    name: "Warpcast",
+    icon: `${iconCDN}/farcaster`,
+    url: "https://warpcast.com/{username}",
+  },
+  debank: {
+    name: "DeBank",
+    icon: "/assets/social/debank.png",
+    url: "https://debank.com/profile/{username}",
+  },
+  bluesky: {
+    name: "BlueSky",
+    icon: "${iconCDN}/bluesky",
+    url: "https://bsky.app/profile/{username}",
+  },
+    xbox: {
+    name: "Xbox",
+    url: "https://www.xbox.com/play/user/{username}",
+   },
+    namemc: {
+    name: "NameMC",
+    icon: "${iconCDN}/namemc",
+    url: "https://namemc.com/profile/{username}.1",
+  },
+    roblox: {
+    name: "Roblox",
+    icon: "${iconCDN}/roblox",
+    url: "https://www.roblox.com/users/{username}",
+  },
+    niconico: {
+    name: "NicoNico",
+    icon: "${iconCDN}/niconico",
+    url: "https://www.nicovideo.jp/user/{username}",
+  },
+    "netease cloud music": {
+    name: "Netease Cloud Music",
+    icon: "${iconCDN}/neteasecloudmusic",
+    url: "https://music.163.com/#/user/home?id={username}",
+  },
+  "netease cloud music artist": {
+    name: "Netease Cloud Music Artist",
+    icon: "${iconCDN}/neteasecloudmusic",
+    url: "https://music.163.com/#/artist?id={username}",
+  },
+  "steamdb": {
+    name: "SteamDB",
+    icon: "${iconCDN}/steamdb",
+    url: "https://steamdb.info/calculator/{username}",
+  },
+  follow: {
+    name: "Follow",
+    icon: "/assets/social/follow.svg",
+    url: "https://app.follow.is/share/users/{username}",
   },
 }
 
-export const Platform: React.FC<{
+export const Platform = ({
+  platform,
+  username,
+  className,
+}: {
   platform: string
   username: string
   className?: string
-}> = ({ platform, username, className }) => {
+}) => {
   platform = platform.toLowerCase()
+
+  const [debouncePlatform, setDebouncePlatform] = useState(platform)
+  useDebounceEffect(
+    () => {
+      setDebouncePlatform(platform)
+    },
+    [platform],
+    { wait: 500 },
+  )
+
+  let link = PlatformsSyncMap[debouncePlatform]?.url
+
+  switch (debouncePlatform) {
+    case "mastodon":
+    case "misskey":
+    case "pleroma":
+      const [uname, instance] = username?.split("@")
+      link = link?.replace("{instance}", instance).replace("{username}", uname)
+      break
+    default:
+      link = link?.replace("{username}", username)
+      break
+  }
+
+  const [showImg, setShowImg] = useState(true)
+
+  useEffect(() => {
+    setShowImg(true)
+  }, [debouncePlatform])
+
   return (
     <UniLink
       className={cn(
-        "inline-flex hover:scale-110 transition-transform ease align-middle",
+        "size-5 inline-flex hover:scale-110 ease align-middle mr-3 sm:mr-6 transition-transform",
         className,
       )}
-      key={platform}
-      href={syncMap[platform]?.url?.replace("{username}", username)}
+      key={debouncePlatform + username}
+      href={link}
     >
       <Tooltip
-        label={`${syncMap[platform]?.name || platform}: ${username}`}
-        className="capitalize"
+        label={`${PlatformsSyncMap[debouncePlatform]?.name || debouncePlatform}: ${username}`}
+        className="text-sm"
       >
-        <span className="w-6 h-6 inline-block overflow-hidden">
-          {syncMap[platform]?.icon ? (
-            <Image fill src={syncMap[platform]?.icon} alt={platform} />
+        <span className="inline-flex items-center">
+          {showImg ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={
+                PlatformsSyncMap[debouncePlatform]?.icon ||
+                `${iconCDN}/${debouncePlatform}`
+              }
+              alt={debouncePlatform}
+              width={20}
+              height={20}
+              onError={() => setShowImg(false)}
+            />
           ) : (
-            <span className="rounded-md inline-flex text-white justify-center items-center bg-zinc-300 w-6 h-6">
-              <i className="i-mingcute:planet-line text-xl" />
+            <span className="rounded-md inline-flex text-white justify-center items-center bg-zinc-300">
+              <i className="i-mingcute-planet-line text-xl" />
             </span>
           )}
         </span>

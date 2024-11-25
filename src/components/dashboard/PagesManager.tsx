@@ -1,56 +1,77 @@
-import { Fragment, useMemo } from "react"
-import { getPageVisibility } from "~/lib/page-helpers"
-import { useDate } from "~/hooks/useDate"
-import { TabItem, Tabs } from "../ui/Tabs"
-import { Menu } from "@headlessui/react"
-import { cn } from "~/lib/utils"
-import { PageVisibilityEnum } from "~/lib/types"
-import { DashboardMain } from "./DashboardMain"
-import { useRouter } from "next/router"
-import Link from "next/link"
-import { EmptyState } from "../ui/EmptyState"
-import { useGetPagesBySite } from "~/queries/page"
-import { setStorage } from "~/lib/storage"
-import { useQueryClient } from "@tanstack/react-query"
-import { Button } from "../ui/Button"
-import { UniLink } from "../ui/UniLink"
-import { nanoid } from "nanoid"
-import { Tooltip } from "../ui/Tooltip"
-import { Trans, useTranslation } from "next-i18next"
-import { readFiles } from "~/lib/read-files"
-import { PagesManagerMenu } from "./PagesManagerMenu"
-import { useMobileLayout } from "~/hooks/useMobileLayout"
+"use client"
 
-export const PagesManager: React.FC<{
-  isPost: boolean
-}> = ({ isPost }) => {
+import { nanoid } from "nanoid"
+import { useTranslations } from "next-intl"
+import Link from "next/link"
+import {
+  useParams,
+  usePathname,
+  useRouter,
+  useSearchParams,
+} from "next/navigation"
+import { Fragment, useMemo, useState } from "react"
+
+import { Menu } from "@headlessui/react"
+import { useQueryClient } from "@tanstack/react-query"
+
+import PostCover from "~/components/home/PostCover"
+import { useDate } from "~/hooks/useDate"
+import { getSiteLink } from "~/lib/helpers"
+import { getPageVisibility } from "~/lib/page-helpers"
+import { readFiles } from "~/lib/read-files"
+import { setStorage } from "~/lib/storage"
+import { ExpandedNote, NoteType, PageVisibilityEnum } from "~/lib/types"
+import { cn } from "~/lib/utils"
+import { useGetPagesBySite, usePinnedPage } from "~/queries/page"
+import { useGetSite } from "~/queries/site"
+
+import { Loading } from "../common/Loading"
+import { PlatformsSyncMap } from "../site/Platform"
+import { Button } from "../ui/Button"
+import { EmptyState } from "../ui/EmptyState"
+import { TabItem, Tabs } from "../ui/Tabs"
+import { Tooltip } from "../ui/Tooltip"
+import { UniLink } from "../ui/UniLink"
+import { DashboardMain } from "./DashboardMain"
+import { PagesManagerBatchSelectActionTab } from "./PagesManagerBatchSelectActionTab"
+import { PagesManagerMenu } from "./PagesManagerMenu"
+
+export const PagesManager = ({ type }: { type: NoteType }) => {
+  const params = useParams()
+  const subdomain = params?.subdomain as string
+  const site = useGetSite(subdomain)
+  const searchParams = useSearchParams()!
   const router = useRouter()
-  const subdomain = router.query.subdomain as string
+  const pathname = usePathname()
+  const pinnedPage = usePinnedPage({ characterId: site.data?.characterId })
 
   const visibility = useMemo<PageVisibilityEnum>(
     () =>
-      router.query.visibility
-        ? (router.query.visibility as PageVisibilityEnum)
+      searchParams?.get("visibility")
+        ? (searchParams?.get("visibility") as PageVisibilityEnum)
         : PageVisibilityEnum.All,
-    [router.query.visibility],
+    [searchParams],
   )
 
-  const { t } = useTranslation(["dashboard", "site"])
+  const t = useTranslations()
   const date = useDate()
 
-  const isMobileLayout = useMobileLayout()
-
   const pages = useGetPagesBySite({
-    type: isPost ? "post" : "page",
-    site: subdomain!,
-    take: 100,
+    type,
+    characterId: site.data?.characterId,
+    limit: 20,
     visibility,
+    handle: subdomain,
+    useStat: true,
   })
+
+  // Batch selections
+  const [batchSelected, setBatchSelected] = useState<(string | number)[]>([])
 
   const tabItems: TabItem[] = [
     {
       value: PageVisibilityEnum.All,
-      text: `All ${isPost ? "Posts" : "Pages"}`,
+      text: `All ${type.charAt(0).toUpperCase() + type.slice(1)}s`,
     },
     {
       value: PageVisibilityEnum.Published,
@@ -64,32 +85,25 @@ export const PagesManager: React.FC<{
       value: PageVisibilityEnum.Scheduled,
       text: "Scheduled",
     },
-    {
-      value: PageVisibilityEnum.Crossbell,
-      text: "Others on Crossbell",
-    },
   ].map((item) => ({
     text: item.text,
     onClick: () => {
-      const newQuery: Record<string, any> = {
-        ...router.query,
-        visibility: item.value,
-      }
+      // issue related: https://github.com/vercel/next.js/issues/49245
+      const newQuery = new URLSearchParams(searchParams.toString())
+      newQuery.set("visibility", item.value)
       if (item.value === PageVisibilityEnum.All) {
-        delete newQuery["visibility"]
+        newQuery.delete("visibility")
       }
-      const search = new URLSearchParams(newQuery).toString()
-      router.push({
-        search,
-      })
+      const search = newQuery.toString()
+      router.push(pathname + "?" + search)
     },
     active: item.value === visibility,
   }))
 
-  const getPageEditLink = (page: { id: string }) => {
-    return `/dashboard/${subdomain}/editor?id=${page.id}&type=${
-      isPost ? "post" : "page"
-    }`
+  const getPageEditLink = (page: ExpandedNote) => {
+    return `/dashboard/${subdomain}/editor?id=${
+      page.noteId || page.draftKey
+    }&type=${type}`
   }
 
   const queryClient = useQueryClient()
@@ -102,7 +116,7 @@ export const PagesManager: React.FC<{
       const file = (await readFiles(e.target?.files))?.[0]
       if (file) {
         const id = nanoid()
-        const key = `draft-${subdomain}-local-${id}`
+        const key = `draft-${site.data?.characterId}-!local-${id}`
         setStorage(key, {
           date: +new Date(),
           values: {
@@ -113,159 +127,371 @@ export const PagesManager: React.FC<{
             tags: file.tags?.join?.(", "),
             title: file.title,
           },
-          isPost: isPost,
+          type,
         })
-        queryClient.invalidateQueries(["getPagesBySite", subdomain])
+        queryClient.invalidateQueries([
+          "getPagesBySite",
+          site.data?.characterId,
+        ])
         router.push(
-          `/dashboard/${subdomain}/editor?id=local-${id}&type=${
-            isPost ? "post" : "page"
-          }`,
+          `/dashboard/${subdomain}/editor?id=!local-${id}&type=${type}`,
         )
       }
     })
     input.click()
   }
 
-  const title = isPost ? "Posts" : "Pages"
-  const description = isPost ? (
-    <>
-      <p>
-        <Trans i18nKey="posts description" ns="dashboard">
-          Posts are entries listed in reverse chronological order on your site.
-          Think of them as articles or updates that you share to offer up new
-          content to your readers.{" "}
-          <UniLink className="underline" href={t("link post-vs-page") || ""}>
-            Post vs. Page
-          </UniLink>
-        </Trans>
-      </p>
-    </>
-  ) : (
-    <>
-      <p>
-        <Trans i18nKey="pages description" ns="dashboard">
-          Pages are static and are not affected by date. Think of them as more
-          permanent fixtures of your site — an About page, and a Contact page
-          are great examples of this.{" "}
-          <UniLink
-            className="underline"
-            href="https://wordpress.com/support/post-vs-page/"
-          >
-            Post vs. Page
-          </UniLink>
-        </Trans>
-      </p>
-      <p>
-        <Trans i18nKey="pages add" ns="dashboard">
-          After you create a page, you can{" "}
-          <UniLink
-            className="underline"
-            href={`/dashboard/${subdomain}/settings/navigation`}
-          >
-            add it to your site&apos;s navigation menu
-          </UniLink>{" "}
-          so your visitors can find it.
-        </Trans>
-      </p>
-    </>
-  )
+  let description = null
+  switch (type) {
+    case "post":
+      description = (
+        <>
+          <p>
+            {t.rich("posts description", {
+              link: (chunks) => (
+                <UniLink
+                  className="underline"
+                  href={t("link post-vs-page") || ""}
+                >
+                  {chunks}
+                </UniLink>
+              ),
+            })}
+          </p>
+          <p>{t("posts add")}</p>
+        </>
+      )
+      break
+    case "page":
+      description = (
+        <>
+          <p>
+            {t.rich("pages description", {
+              link: (chunks) => (
+                <UniLink
+                  className="underline"
+                  href="https://wordpress.com/support/post-vs-page/"
+                >
+                  {chunks}
+                </UniLink>
+              ),
+            })}
+          </p>
+          <p>
+            {t.rich("pages add", {
+              link: (chunks) => (
+                <UniLink
+                  className="underline"
+                  href={`/dashboard/${subdomain}/settings/navigation`}
+                >
+                  {chunks}
+                </UniLink>
+              ),
+            })}
+          </p>
+        </>
+      )
+      break
+    case "portfolio":
+      description = (
+        <>
+          <p>{t("portfolios description")}</p>
+          <p>
+            {t.rich("portfolios add", {
+              link1: (chunks) => (
+                <UniLink
+                  className="underline"
+                  href={`${getSiteLink({
+                    subdomain,
+                  })}/portfolios`}
+                >
+                  {chunks}
+                </UniLink>
+              ),
+              link2: (chunks) => (
+                <UniLink
+                  className="underline"
+                  href={`/dashboard/${subdomain}/settings/navigation`}
+                >
+                  {chunks}
+                </UniLink>
+              ),
+            })}
+          </p>
+        </>
+      )
+      break
+    case "short":
+      description = (
+        <>
+          <p>
+            {t.rich("shots description", {
+              link: (chunks) => (
+                <UniLink
+                  className="underline"
+                  href={`${getSiteLink({
+                    subdomain,
+                  })}/shorts`}
+                >
+                  {chunks}
+                </UniLink>
+              ),
+            })}
+          </p>
+          <p>
+            {t.rich("shots add", {
+              link1: (chunks) => (
+                <UniLink
+                  className="underline"
+                  href={`${getSiteLink({
+                    subdomain,
+                  })}/shorts`}
+                >
+                  {chunks}
+                </UniLink>
+              ),
+              link2: (chunks) => (
+                <UniLink
+                  className="underline"
+                  href={`/dashboard/${subdomain}/settings/navigation`}
+                >
+                  {chunks}
+                </UniLink>
+              ),
+            })}
+          </p>
+        </>
+      )
+      break
+  }
 
   let currentLength = 0
 
   return (
     <DashboardMain className="max-w-screen-lg">
-      <header className="mb-8">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-2xl font-bold">{t(title)}</h2>
-          <div className="flex justify-center items-center space-x-4">
-            <Button
-              className={cn(`space-x-2 inline-flex`)}
-              onClick={() =>
-                router.push(
-                  `/dashboard/${subdomain}/editor?type=${
-                    isPost ? "post" : "page"
-                  }`,
-                )
-              }
-            >
-              <span className="i-mingcute:add-line inline-block"></span>
-              <span>{t(`New ${isPost ? "Post" : "Page"}`)}</span>
-            </Button>
+      <header className="mb-4 space-y-4">
+        <div className="flex justify-between items-center">
+          <h2 className="text-2xl font-bold">
+            {t(`${type.charAt(0).toUpperCase() + type.slice(1)}s`)}
+          </h2>
+        </div>
+        <div className="space-x-4">
+          <Button
+            className={cn(`space-x-2 inline-flex`)}
+            onClick={() =>
+              router.push(`/dashboard/${subdomain}/editor?type=${type}`)
+            }
+          >
+            <span className="i-mingcute-add-line inline-block"></span>
+            <span>
+              {t(`New ${type.charAt(0).toUpperCase() + type.slice(1)}`)}
+            </span>
+          </Button>
+          {(type === "post" || type === "page") && (
             <span className="hidden sm:inline-flex">
               <Tooltip
                 label={t("Import markdown file with front matter supported")}
                 placement="bottom"
               >
                 <Button className={cn(`space-x-2`)} onClick={importFile}>
-                  <span className="i-mingcute:file-import-line inline-block"></span>
+                  <span className="i-mingcute-file-import-line inline-block"></span>
                   <span>{t("Import")}</span>
                 </Button>
               </Tooltip>
             </span>
-          </div>
+          )}
         </div>
-        <div className="text-sm text-zinc-500 leading-relaxed">
+        <div className="text-sm text-zinc-500 leading-relaxed space-y-1">
           {description}
         </div>
       </header>
-      <Tabs items={tabItems} />
+
+      {batchSelected.length > 0 ? (
+        <PagesManagerBatchSelectActionTab
+          type={type}
+          pages={pages.data}
+          batchSelected={batchSelected}
+          setBatchSelected={setBatchSelected}
+        />
+      ) : (
+        <Tabs items={tabItems} />
+      )}
 
       <div className="-mt-3">
-        {!pages.data?.pages?.[0].total && (
-          <EmptyState resource={isPost ? "posts" : "pages"} />
+        {pages.isLoading && <Loading />}
+        {!pages.isLoading && !pages.data?.pages?.[0].count && (
+          <EmptyState resource={type} />
         )}
 
         {pages.data?.pages.map((page) =>
           page.list?.map((page) => {
             currentLength++
+            const isPortfolio =
+              page.metadata?.content?.tags?.[0] === "portfolio"
+            const externalLink = page.metadata?.content?.external_urls?.[0]
+            const platform = Object.values(PlatformsSyncMap).find(
+              (p) =>
+                p.portfolioDomain &&
+                externalLink?.startsWith(p.portfolioDomain),
+            )
+
             return (
               <Link
-                key={page.id}
+                key={page.transactionHash || page.draftKey}
                 href={getPageEditLink(page)}
-                className="group relative hover:bg-zinc-100 rounded-lg py-3 px-3 transition-colors -mx-3 flex justify-between"
+                className="group relative hover:bg-zinc-100 rounded-lg py-4 px-3 transition-colors -mx-3 flex max-sm:flex-col gap-4"
               >
-                <div className="min-w-0">
-                  {page.title ? (
-                    <div className="flex items-center">
-                      <span>{page.title}</span>
-                    </div>
-                  ) : (
-                    <div className="text-zinc-500 text-xs mt-1 truncate">
-                      <span>{page.summary?.content}</span>
-                    </div>
-                  )}
-                  <div className="text-zinc-400 text-xs mt-1">
+                <PostCover
+                  uniqueKey={`${page.characterId}-${page.noteId}`}
+                  images={page.metadata?.content.images}
+                  title={page.metadata?.content?.title}
+                  className="rounded-lg sm:w-48"
+                />
+                <div className="min-w-0 flex-1 flex flex-col justify-between">
+                  <div className="xlog-post-title font-bold text-base text-zinc-700">
+                    <span>{page.metadata?.content?.title}</span>
+                  </div>
+                  <div
+                    className="xlog-post-excerpt text-zinc-500 line-clamp-1 text-sm"
+                    style={{
+                      wordBreak: "break-word",
+                    }}
+                  >
+                    {page.metadata?.content?.summary}
+                    {page.metadata?.content?.summary && "..."}
+                  </div>
+                  <div className="xlog-post-meta text-zinc-400 flex items-center text-[13px] h-[26px] truncate">
+                    {isPortfolio ? (
+                      <>
+                        <Tooltip
+                          label={`${platform?.name || platform}`}
+                          className="text-sm"
+                        >
+                          <span className="inline-flex items-center space-x-[6px]">
+                            {platform?.icon && (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img
+                                src={platform?.icon}
+                                alt={platform?.name}
+                                width={16}
+                                height={16}
+                              />
+                            )}
+                            <span>{t("Portfolio")}</span>
+                          </span>
+                        </Tooltip>
+                      </>
+                    ) : (
+                      <>
+                        {!!page.metadata?.content?.tags?.[1] && (
+                          <span className="xlog-post-tags border transition-colors text-zinc-500 inline-flex items-center bg-zinc-100 rounded-full px-2 py-[1.5px] truncate text-xs sm:text-[13px] mr-2">
+                            <i className="i-mingcute-tag-line mr-[2px]" />
+                            {page.metadata?.content?.tags?.[1]}
+                          </span>
+                        )}
+                        <span className="xlog-post-word-count sm:inline-flex items-center hidden mr-2">
+                          <i className="i-mingcute-time-line mr-[2px]" />
+                          <span
+                            style={{
+                              wordSpacing: "-.2ch",
+                            }}
+                          >
+                            {page.metadata?.content?.readingTime} {t("min")}
+                          </span>
+                        </span>
+                        {!!page.stat?.viewDetailCount && (
+                          <span className="xlog-post-views inline-flex items-center">
+                            <i className="i-mingcute-eye-line mr-[2px]" />
+                            <span>{page.stat?.viewDetailCount}</span>
+                          </span>
+                        )}
+                      </>
+                    )}
+                  </div>
+                  <div className="text-zinc-400 text-sm">
                     <span className="capitalize">
                       {t(getPageVisibility(page))}
                     </span>
                     <span className="mx-2">·</span>
                     <span>
                       {getPageVisibility(page) === PageVisibilityEnum.Draft
-                        ? date.formatDate(page.date_updated)
-                        : date.formatDate(page.date_published)}
+                        ? date.formatDate(page.updatedAt)
+                        : date.formatDate(
+                            page.metadata?.content?.date_published || "",
+                          )}
                     </span>
+                    {pinnedPage.noteId === page.noteId && (
+                      <>
+                        <span className="mx-2">·</span>
+                        <span>
+                          <i className="i-mingcute-pin-2-fill translate-y-[18%]" />{" "}
+                          {t("Pinned")}
+                        </span>
+                      </>
+                    )}
                   </div>
                 </div>
-                <div className="w-10 flex-shrink-0">
+                <div className="shrink-0 flex gap-2 sm:self-center sm:ml-auto">
+                  <button
+                    className={cn(
+                      `text-gray-400 relative z-10 size-8 rounded inline-flex group-hover:visible justify-center items-center`,
+                      batchSelected.includes(page.noteId || page.draftKey || 0)
+                        ? "bg-gray-200"
+                        : `hover:bg-gray-200`,
+                    )}
+                    onClick={(e) => {
+                      e.preventDefault()
+                      // Toggle selection
+                      if (
+                        batchSelected.includes(
+                          page.noteId || page.draftKey || 0,
+                        )
+                      ) {
+                        // Deselect
+                        setBatchSelected(
+                          batchSelected.filter(
+                            (pageId) =>
+                              pageId !== page.noteId || page.draftKey || 0,
+                          ),
+                        )
+                      } else {
+                        // Do select
+                        setBatchSelected([
+                          ...batchSelected,
+                          page.noteId || page.draftKey || 0,
+                        ])
+                      }
+                    }}
+                  >
+                    <i
+                      className={`${
+                        batchSelected.includes(
+                          page.noteId || page.draftKey || 0,
+                        )
+                          ? "i-mingcute-check-fill"
+                          : "i-mingcute-add-line"
+                      } text-lg`}
+                    />
+                  </button>
                   <Menu>
                     {({ open, close }) => (
                       <>
                         <Menu.Button as={Fragment}>
                           <button
                             className={cn(
-                              `text-gray-400 relative z-10 w-8 h-8 rounded inline-flex group-hover:visible justify-center items-center`,
+                              `text-gray-400 relative z-10 size-8 rounded inline-flex group-hover:visible justify-center items-center`,
                               open ? `bg-gray-200` : `hover:bg-gray-200`,
                             )}
                             onClick={(e) => {
                               e.stopPropagation()
                             }}
                           >
-                            <i className="i-mingcute:more-1-line text-2xl" />
+                            <i className="i-mingcute-more-1-line text-2xl" />
                           </button>
                         </Menu.Button>
 
                         <PagesManagerMenu
-                          isPost={isPost}
+                          type={type}
                           page={page}
                           onClick={close}
                         />
@@ -287,15 +513,12 @@ export const PagesManager: React.FC<{
           >
             {t("load more", {
               name: t(
-                isPost
-                  ? "post"
-                  : "page" +
-                      ((pages.data?.pages?.[0].total || 0) - currentLength > 1
-                        ? "s"
-                        : ""),
+                type +
+                  ((pages.data?.pages?.[0].count || 0) - currentLength > 1
+                    ? "s"
+                    : ""),
               ),
-              count: (pages.data?.pages?.[0].total || 0) - currentLength,
-              ns: "site",
+              count: (pages.data?.pages?.[0].count || 0) - currentLength,
             })}
           </Button>
         )}

@@ -1,25 +1,31 @@
+"use client"
+
+import { useTranslations } from "next-intl"
 import { useState } from "react"
+
 import { CharacterList } from "~/components/common/CharacterList"
+import { Button } from "~/components/ui/Button"
 import {
   useGetSiteSubscriptions,
   useGetSiteToSubscriptions,
 } from "~/queries/site"
-import { useTranslation } from "next-i18next"
-import { Button } from "~/components/ui/Button"
 
-export const FollowingCount: React.FC<{
-  siteId?: string
+export const FollowingCount = ({
+  characterId,
+  disableList,
+}: {
+  characterId?: number
   disableList?: boolean
-}> = ({ siteId, disableList }) => {
+}) => {
   let [isFollowListOpen, setIsFollowListOpen] = useState(false)
   let [isToFollowListOpen, setIsToFollowListOpen] = useState(false)
-  const { t } = useTranslation("common")
+  const t = useTranslations()
 
   const subscriptions = useGetSiteSubscriptions({
-    siteId: siteId || "",
+    characterId,
   })
   const toSubscriptions = useGetSiteToSubscriptions({
-    siteId: siteId || "",
+    characterId,
   })
 
   return (
@@ -27,26 +33,26 @@ export const FollowingCount: React.FC<{
       <Button
         variant="text"
         className={
-          "xlog-site-followers align-middle text-zinc-500 -ml-2" +
+          "xlog-site-followers align-middle text-zinc-500 -ml-3" +
           (disableList ? "" : " cursor-pointer")
         }
         onClick={() => setIsFollowListOpen(true)}
       >
-        <span className="font-medium text-zinc-700 pr-[2px]">
-          {subscriptions.data?.pages?.[0]?.total || 0}
+        <span className="font-medium text-zinc-700 pr-[3px]">
+          {subscriptions.data?.pages?.[0]?.count || 0}
         </span>{" "}
         {t("Followers")}
       </Button>
       <Button
         variant="text"
         className={
-          "xlog-site-followings align-middle text-zinc-500 sm:ml-3" +
+          "xlog-site-followings align-middle text-zinc-500 sm:ml-3 !hidden sm:!inline-flex" +
           (disableList ? "" : " cursor-pointer")
         }
         onClick={() => setIsToFollowListOpen(true)}
       >
         <span className="font-medium text-zinc-700 pr-[2px]">
-          {toSubscriptions.data?.pages?.[0]?.total || 0}
+          {toSubscriptions.data?.pages?.[0]?.count || 0}
         </span>{" "}
         {t("Followings")}
       </Button>
@@ -54,7 +60,7 @@ export const FollowingCount: React.FC<{
         <CharacterList
           open={isFollowListOpen}
           setOpen={setIsFollowListOpen}
-          title="Follow List"
+          title={t("Followers")}
           loadMore={subscriptions.fetchNextPage}
           hasMore={!!subscriptions.hasNextPage}
           list={subscriptions.data?.pages}
@@ -64,7 +70,7 @@ export const FollowingCount: React.FC<{
         <CharacterList
           open={isToFollowListOpen}
           setOpen={setIsToFollowListOpen}
-          title="Follow List"
+          title={t("Followings")}
           loadMore={toSubscriptions.fetchNextPage}
           hasMore={!!toSubscriptions.hasNextPage}
           list={toSubscriptions.data?.pages}

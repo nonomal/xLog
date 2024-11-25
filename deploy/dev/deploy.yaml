@@ -1,0 +1,76 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: xlog
+  namespace: crossbell
+spec:
+  progressDeadlineSeconds: 600
+  replicas: 1
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app: xlog
+  strategy:
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: xlog
+      # annotations:
+      #   prometheus.io/path: /metrics
+      #   prometheus.io/port: "8080"
+      #   prometheus.io/scrape: "true"
+    spec:
+      enableServiceLinks: false
+      initContainers:
+        - image: rss3/xlog
+          envFrom:
+            - secretRef:
+                name: xlog
+          imagePullPolicy: Always
+          name: xlog-init
+          command: ["/bin/sh", "-c"]
+          args: ["npm install -g prisma; npm run prisma:migrate:deploy"]
+      containers:
+        - image: rss3/xlog
+          imagePullPolicy: Always
+          name: xlog
+          args:
+            - "start"
+            - "-i"
+            - "1"
+            - "ecosystem.config.js"
+          envFrom:
+            - secretRef:
+                name: xlog
+          ports:
+            - containerPort: 3000
+              protocol: TCP
+          resources:
+            requests:
+              memory: "3500Mi"
+              cpu: "300m"
+            limits:
+              memory: "5000Mi"
+              cpu: "2000m"
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          readinessProbe:
+            httpGet:
+              path: /api/healthcheck
+              port: 3000
+            initialDelaySeconds: 40
+            periodSeconds: 20
+          livenessProbe:
+            tcpSocket:
+              port: 3000
+            initialDelaySeconds: 40
+            periodSeconds: 20
+      dnsPolicy: ClusterFirst
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext: {}
+      terminationGracePeriodSeconds: 30

@@ -1,10 +1,13 @@
+import { useTranslations } from "next-intl"
 import { useEffect, useRef } from "react"
-import { useTranslation } from "react-i18next"
+
 import { useIsDark } from "~/hooks/useDarkMode"
 
-export const EmojiPicker: React.FC<{
+export const EmojiPicker = ({
+  onEmojiSelect,
+}: {
   onEmojiSelect: (e: any) => void
-}> = ({ onEmojiSelect }) => {
+}) => {
   const ref = useRef<any>()
   const isDark = useIsDark()
 
@@ -23,7 +26,7 @@ export const EmojiPicker: React.FC<{
     })
   }, [])
 
-  const { t } = useTranslation("common")
+  const t = useTranslations()
 
   return (
     <div

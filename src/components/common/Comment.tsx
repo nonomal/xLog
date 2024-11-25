@@ -1,22 +1,45 @@
-import { cn } from "~/lib/utils"
-import { Note } from "~/lib/types"
-import { useGetComments } from "~/queries/page"
-import { CommentItem } from "~/components/common/CommentItem"
-import { CommentInput } from "~/components/common/CommentInput"
-import { useTranslation } from "next-i18next"
-import InfiniteScroll from "react-infinite-scroller"
+"use client"
 
-export const Comment: React.FC<{
-  page?: Note | null
+import { useTranslations } from "next-intl"
+import { useState } from "react"
+// TODO
+import { Virtuoso } from "react-virtuoso"
+
+import { CommentInput } from "~/components/common/CommentInput"
+import { CommentItem } from "~/components/common/CommentItem"
+import { ExpandedNote } from "~/lib/types"
+import { cn } from "~/lib/utils"
+import { useGetComments } from "~/queries/page"
+
+import { Loading } from "./Loading"
+
+const Comment = ({
+  page,
+  className,
+  fixHeight,
+}: {
+  page?: ExpandedNote
   className?: string
-}> = ({ page, className }) => {
+  fixHeight?: boolean
+}) => {
   const comments = useGetComments({
-    pageId: page?.id,
+    characterId: page?.characterId,
+    noteId: page?.noteId,
   })
-  const { t } = useTranslation("common")
+  const t = useTranslations()
+
+  const data = comments.data?.pages.filter(
+    (page) => (page?.list?.length ?? 0) > 0,
+  )
+
+  const [totalListHeight, setTotalListHeight] = useState(1)
 
   return (
-    <div className={cn("xlog-comment comment", className)} id="comments">
+    <div
+      className={cn("xlog-comment comment", className)}
+      id="comments"
+      data-hide-print
+    >
       <div className="xlog-comment-count border-b pb-2 mb-6">
         <span>
           {comments.isLoading
@@ -32,37 +55,45 @@ export const Comment: React.FC<{
           )}
         </span>
       </div>
-      <CommentInput pageId={page?.id} />
-      <InfiniteScroll
-        className="xlog-comment-list space-y-6 pt-6"
-        loadMore={comments.fetchNextPage as any}
-        hasMore={comments.hasNextPage}
-        loader={
-          <div
-            className="relative mt-4 w-full text-sm text-center py-4"
-            key={"loading"}
-          >
-            {t("Loading")}...
-          </div>
+      <CommentInput characterId={page?.characterId} noteId={page?.noteId} />
+
+      <Virtuoso
+        className="xlog-comment-list"
+        style={{
+          height: fixHeight ? totalListHeight : undefined,
+        }}
+        useWindowScroll={!fixHeight}
+        data={data}
+        endReached={() => comments.hasNextPage && comments.fetchNextPage()}
+        components={{
+          Footer: comments.isFetchingNextPage ? Loading : undefined,
+        }}
+        totalListHeightChanged={(height) => {
+          if (fixHeight && height > 0) {
+            setTotalListHeight(Math.min(height + 71, 900))
+          }
+        }}
+        itemContent={(index, p) =>
+          p?.list?.map((comment, idx) => (
+            <CommentItem
+              className={cn("mt-6", {
+                "border-b-0":
+                  data &&
+                  index === data.length - 1 &&
+                  idx === p.list?.length - 1,
+              })}
+              originalCharacterId={page?.characterId}
+              originalNoteId={page?.noteId}
+              comment={comment}
+              key={comment.transactionHash}
+              depth={0}
+            />
+          ))
         }
-      >
-        {comments.isLoading ? (
-          <div className="relative mt-4 w-full text-sm text-center py-4">
-            {t("Loading")}...
-          </div>
-        ) : (
-          comments.data?.pages?.map((p) =>
-            p?.list?.map((comment) => (
-              <CommentItem
-                originalId={page?.id}
-                comment={comment}
-                key={comment.transactionHash}
-                depth={0}
-              />
-            )),
-          )
-        )}
-      </InfiniteScroll>
+      ></Virtuoso>
+      {comments.isLoading && <Loading />}
     </div>
   )
 }
+
+export default Comment

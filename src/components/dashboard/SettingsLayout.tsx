@@ -1,44 +1,49 @@
-import { useRouter } from "next/router"
+import { useTranslations } from "next-intl"
+import { useParams } from "next/navigation"
 import React from "react"
 
-import { type TabItem, Tabs } from "../ui/Tabs"
-import { DashboardMain } from "./DashboardMain"
-import { useTranslation } from "next-i18next"
+import { useXSettingsModal } from "@crossbell/connect-kit"
 
-export const SettingsLayout: React.FC<{
+import { Tabs, type TabItem } from "../ui/Tabs"
+import { DashboardMain } from "./DashboardMain"
+
+export const SettingsLayout = ({
+  title,
+  children,
+}: {
   title: string
   children: React.ReactNode
-  type: "site" | "account"
-}> = ({ title, children, type }) => {
-  const router = useRouter()
-  const { t } = useTranslation("dashboard")
+}) => {
+  const t = useTranslations()
+  const xSettingsModal = useXSettingsModal()
 
-  const subdomain = router.query.subdomain as string
-  const tabItems: TabItem[] = (
-    type === "site"
-      ? [
-          { text: "General", href: `/dashboard/${subdomain}/settings/general` },
-          {
-            text: "Social Platforms",
-            href: `/dashboard/${subdomain}/settings/social-platforms`,
-          },
-          {
-            text: "Navigation",
-            href: `/dashboard/${subdomain}/settings/navigation`,
-          },
-          { text: "Domains", href: `/dashboard/${subdomain}/settings/domains` },
-          { text: "Custom CSS", href: `/dashboard/${subdomain}/settings/css` },
-          {
-            text: "Operators",
-            href: `/dashboard/${subdomain}/settings/operator`,
-          },
-          {
-            text: "Export data",
-            href: `https://export.crossbell.io/?handle=${subdomain}`,
-          },
-        ]
-      : [{ text: "Profile", href: `/dashboard/${subdomain}/account/profile` }]
-  ).map((item) => ({ ...item, active: router.asPath === item.href }))
+  const params = useParams()
+  const subdomain = params?.subdomain as string
+  const tabItems: TabItem[] = [
+    { text: "General", href: `/dashboard/${subdomain}/settings/general` },
+    {
+      text: "Social Platforms",
+      href: `/dashboard/${subdomain}/settings/social-platforms`,
+    },
+    {
+      text: "Navigation",
+      href: `/dashboard/${subdomain}/settings/navigation`,
+    },
+    { text: "Domains", href: `/dashboard/${subdomain}/settings/domains` },
+    { text: "Custom CSS", href: `/dashboard/${subdomain}/settings/css` },
+    {
+      text: "Operators",
+      href: `/dashboard/${subdomain}/settings/operator`,
+    },
+    {
+      text: "xSettings",
+      onClick: () => xSettingsModal.show(),
+    },
+    {
+      text: "Export data",
+      href: `https://export.crossbell.io/?handle=${subdomain}`,
+    },
+  ]
 
   return (
     <DashboardMain>

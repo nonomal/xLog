@@ -1,31 +1,41 @@
+"use client"
+
+import { AnimatePresence, m } from "framer-motion"
 import { useState } from "react"
+
 import {
-  offset,
-  flip,
-  shift,
   autoUpdate,
-  useFloating,
-  useInteractions,
-  useHover,
-  useFocus,
-  useRole,
+  flip,
+  offset,
+  shift,
   useDismiss,
-  useTransitionStyles,
+  useFloating,
+  useHover,
+  useInteractions,
+  useRole,
 } from "@floating-ui/react"
+
 import { CharacterCard } from "~/components/common/CharacterCard"
 
-export const CharacterFloatCard: React.FC<{
+import { Portal } from "./Portal"
+
+export const CharacterFloatCard = ({
+  siteId,
+  children,
+}: {
   siteId?: string
   children: JSX.Element
-}> = ({ siteId, children }) => {
+}) => {
   const [open, setOpen] = useState(false)
 
-  const { x, y, refs, strategy, context } = useFloating({
+  const { floatingStyles, refs, context } = useFloating({
     placement: "bottom-start",
     open,
     onOpenChange: setOpen,
     middleware: [offset(5), flip(), shift({ padding: 8 })],
     whileElementsMounted: autoUpdate,
+    strategy: "fixed",
+    transform: false,
   })
 
   const { getReferenceProps, getFloatingProps } = useInteractions([
@@ -34,38 +44,40 @@ export const CharacterFloatCard: React.FC<{
     useDismiss(context),
   ])
 
-  const { isMounted, styles } = useTransitionStyles(context, {
-    duration: 100,
-  })
-
   const [buttonLoading, setButtonLoading] = useState(false)
 
   return (
     <>
-      <span className="inline" ref={refs.setReference} {...getReferenceProps()}>
+      <span
+        className="inline-block"
+        ref={refs.setReference}
+        {...getReferenceProps()}
+      >
         {children}
       </span>
-      {isMounted && (
-        <span
-          ref={refs.setFloating}
-          className={
-            "z-10 block w-80" + (open || buttonLoading ? "" : " hidden")
-          }
-          style={{
-            position: strategy,
-            top: y ?? "0",
-            left: x ?? "0",
-            ...styles,
-          }}
-          {...getFloatingProps()}
-        >
-          <CharacterCard
-            siteId={siteId}
-            open={open}
-            setButtonLoading={setButtonLoading}
-          />
-        </span>
-      )}
+      <AnimatePresence>
+        {open && (
+          <Portal>
+            <m.span
+              ref={refs.setFloating}
+              className={
+                "z-10 block w-80" + (open || buttonLoading ? "" : " hidden")
+              }
+              style={floatingStyles}
+              {...getFloatingProps()}
+              initial={{ translateY: "10px", opacity: 0 }}
+              animate={{ translateY: "0px", opacity: 1 }}
+              exit={{ translateY: "10px", opacity: 0 }}
+            >
+              <CharacterCard
+                siteId={siteId}
+                open={open}
+                setButtonLoading={setButtonLoading}
+              />
+            </m.span>
+          </Portal>
+        )}
+      </AnimatePresence>
     </>
   )
 }

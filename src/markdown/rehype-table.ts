@@ -1,8 +1,8 @@
+import type { Root } from "hast"
 import { Plugin } from "unified"
-import { Root } from "rehype-raw"
 import { visit } from "unist-util-visit"
 
-export const rehypeTable: Plugin<Array<void>, Root> = () => (tree) => {
+export const rehypeTable: Plugin<Array<void>, Root> = () => (tree: Root) => {
   visit(tree, { tagName: "table" }, (node, i, parent) => {
     if (parent) {
       parent.children[i!] = {

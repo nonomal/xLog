@@ -1,19 +1,25 @@
+"use client"
+
+import { useTranslations } from "next-intl"
+import { useRouter, useSearchParams } from "next/navigation"
 import { useForm } from "react-hook-form"
-import { useRouter } from "next/router"
-import { useTranslation } from "next-i18next"
+
 import { cn } from "~/lib/utils"
 
-export const SearchInput: React.FC<{
-  value?: string
+export const SearchInput = ({
+  noBorder,
+  onSubmit,
+}: {
   noBorder?: boolean
   onSubmit?: (value?: string) => void
-}> = ({ value, noBorder, onSubmit }) => {
+}) => {
   const router = useRouter()
-  const { t } = useTranslation(["common", "site"])
+  const searchParams = useSearchParams()
+  const t = useTranslations()
 
   const form = useForm({
     defaultValues: {
-      content: value || "",
+      content: searchParams?.get("q") || "",
     },
   })
 
@@ -23,13 +29,13 @@ export const SearchInput: React.FC<{
   })
 
   return (
-    <div className="xlog-comment-input flex">
+    <div className="xlog-search-input flex">
       <form className="w-full relative" onSubmit={handleSubmit}>
         <div
-          className="absolute left-0 top-1/2 -translate-y-1/2 text-2xl text-zinc-500 h-11 w-14 flex items-center justify-center cursor-pointer"
+          className="absolute left-0 top-1/2 -translate-y-1/2 text-2xl text-zinc-500 h-11 ml-4 flex items-center justify-center cursor-pointer"
           onClick={handleSubmit}
         >
-          <i className="i-mingcute:search-line block" />
+          <i className="i-mingcute-search-line block" />
         </div>
         <input
           id="content"

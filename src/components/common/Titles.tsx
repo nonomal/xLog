@@ -1,7 +1,7 @@
 import { cn } from "~/lib/utils"
+
 import data from "../../../data/titles.json"
 import { Tooltip } from "../ui/Tooltip"
-import { UniLink } from "../ui/UniLink"
 
 const icons: {
   [key: string]: {
@@ -11,13 +11,15 @@ const icons: {
 } = {
   "xLog contributor": {
     bg: "bg-zinc-700 text-white",
-    icon: "i-mingcute:terminal-line",
+    icon: "i-mingcute-terminal-line",
+  },
+  Organization: {
+    bg: "bg-sky-700 text-white",
+    icon: "i-mingcute-building-1-line",
   },
 }
 
-export const Titles: React.FC<{
-  characterId?: number
-}> = ({ characterId }) => {
+export const Titles = ({ characterId }: { characterId?: number }) => {
   if (!characterId) {
     return null
   }
@@ -36,14 +38,20 @@ export const Titles: React.FC<{
           label={title.name}
           childrenClassName={cn(
             icons[title.name].bg,
-            "inline-flex p-[1px] rounded-sm",
+            "inline-flex p-px rounded-sm",
           )}
         >
-          <UniLink href={title.link} className="inline-flex">
+          <span
+            onClick={(e) => {
+              e.preventDefault()
+              window.open(title.link)
+            }}
+            className="inline-flex"
+          >
             <span className="text-white">
               <i className={cn(icons[title.name].icon, "text-[10px] block")} />
             </span>
-          </UniLink>
+          </span>
         </Tooltip>
       ))}
     </span>

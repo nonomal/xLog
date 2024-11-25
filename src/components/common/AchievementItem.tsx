@@ -1,10 +1,12 @@
-import type { AchievementSection } from "~/models/site.model"
-import { Image } from "~/components/ui/Image"
-import { AchievementModal } from "~/components/common/AchievementModal"
-import { useEffect, useState } from "react"
+import { useTranslations } from "next-intl"
+import { useState } from "react"
+
 import { Indicator } from "@mantine/core"
+
+import { AchievementModal } from "~/components/common/AchievementModal"
+import { Image } from "~/components/ui/Image"
 import { useDate } from "~/hooks/useDate"
-import { useTranslation } from "next-i18next"
+import type { AchievementSection } from "~/models/site.model"
 
 export const Badge = ({
   media,
@@ -32,15 +34,21 @@ export const Badge = ({
   )
 }
 
-export const AchievementItem: React.FC<{
+export const AchievementItem = ({
+  group,
+  layoutId,
+  size,
+  characterId,
+  isOwner,
+}: {
   group: AchievementSection["groups"][number]
   layoutId: string
   size?: number
-  characterId?: string
+  characterId?: number
   isOwner: boolean
-}> = ({ group, layoutId, size, characterId, isOwner }) => {
+}) => {
   const date = useDate()
-  const { t } = useTranslation("common")
+  const t = useTranslations()
 
   const achievement = group.items
     .filter((item) => item.status === "MINTED")
@@ -50,14 +58,14 @@ export const AchievementItem: React.FC<{
     ? group.items.filter((item) => item.status === "MINTABLE").pop()
     : null
 
-  const achievementComming = isOwner
-    ? group.items.filter((item) => item.status === "COMMING").pop()
+  const achievementComing = isOwner
+    ? group.items.filter((item) => item.status === "COMING").pop()
     : null
 
   const [opened, setOpened] = useState(false)
 
   if (isOwner) {
-    if (!achievement && !achievementMintable && !achievementComming) {
+    if (!achievement && !achievementMintable && !achievementComing) {
       return null
     }
   } else {
@@ -78,7 +86,7 @@ export const AchievementItem: React.FC<{
       >
         <Badge
           media={
-            (achievement || achievementMintable || achievementComming)!.info
+            (achievement || achievementMintable || achievementComing)!.info
               .media
           }
           className={`mb-1 ${!achievement && "grayscale"}`}
@@ -95,11 +103,11 @@ export const AchievementItem: React.FC<{
               position="middle-start"
               color="red"
               className="inline-flex max-w-full justify-center items-center"
-              styles={() => ({
+              styles={{
                 indicator: {
-                  "z-index": "1",
+                  zIndex: "1",
                 },
-              })}
+              }}
             >
               <span className="capitalize text-xs font-medium truncate max-w-full inline-block">
                 {group.info.title}
@@ -122,7 +130,7 @@ export const AchievementItem: React.FC<{
                     )
                     .humanize(),
                 })
-              : t(achievementMintable ? "Mintable" : "Comming soon")}
+              : t(achievementMintable ? "Mintable" : "Coming soon")}
           </span>
         </div>
       </div>

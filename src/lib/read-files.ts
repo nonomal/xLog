@@ -1,4 +1,3 @@
-import { renderPageContent } from "~/markdown"
 import { getDefaultSlug } from "~/lib/default-slug"
 
 const makeArray = (value: any) => {
@@ -11,8 +10,9 @@ const makeArray = (value: any) => {
   return [value]
 }
 
-export const readFiles = (files: FileList) => {
+export const readFiles = async (files: FileList) => {
   const promises = []
+  const { renderPageContent } = await import("~/markdown")
   for (let i = 0; i < files.length; i++) {
     const file = files[i]
     promises.push(
@@ -30,21 +30,25 @@ export const readFiles = (files: FileList) => {
         ) => {
           const reader = new FileReader()
           reader.onload = () => {
-            const pageContent = renderPageContent(reader.result as string)
+            const pageContent = renderPageContent({
+              content: reader.result as string,
+            })
+            const metadata = pageContent.toMetadata()
             resolve({
               title:
-                pageContent.frontMatter.title ||
+                metadata.frontMatter?.title ||
                 file.name.replace(/\.[^/.]+$/, ""),
               type: file.type,
               size: file.size,
               date_published: new Date(
-                pageContent.frontMatter.date || file.lastModified || Date.now(),
+                metadata.frontMatter?.date || file.lastModified || Date.now(),
               ).toISOString(),
               slug:
-                pageContent.frontMatter.permalink || getDefaultSlug(file.name),
+                metadata.frontMatter?.permalink ||
+                metadata.frontMatter?.slug ||
+                getDefaultSlug(file.name),
               tags: makeArray(
-                pageContent.frontMatter.tags ||
-                  pageContent.frontMatter.categories,
+                metadata.frontMatter?.tags || metadata.frontMatter?.categories,
               ),
               content: reader.result as string,
             })

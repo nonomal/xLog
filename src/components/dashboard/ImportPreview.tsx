@@ -1,18 +1,23 @@
-import { useEffect, useRef, useState } from "react"
-import useOnClickOutside from "use-onclickoutside"
-import type { NoteMetadata } from "crossbell.js"
-import { PageContent } from "../common/PageContent"
+import type { NoteMetadata } from "crossbell"
+import { useTranslations } from "next-intl"
+import dynamic from "next/dynamic"
+import { useState } from "react"
+
 import { useDate } from "~/hooks/useDate"
+import { RESERVED_TAGS } from "~/lib/constants"
+import { cn } from "~/lib/utils"
 
-import { Button, ButtonGroup } from "../ui/Button"
-import { useTranslation } from "next-i18next"
+const DynamicMarkdownContent = dynamic(
+  () => import("../common/MarkdownContent"),
+  {
+    ssr: false,
+  },
+)
 
-export const ImportPreview: React.FC<{
-  note: NoteMetadata
-}> = ({ note }) => {
+export const ImportPreview = ({ note }: { note: NoteMetadata }) => {
   const date = useDate()
   const [showcaseMore, setShowcaseMore] = useState(false)
-  const { t } = useTranslation("common")
+  const t = useTranslations()
 
   return (
     <article className="border rounded-xl p-6 mt-4">
@@ -26,11 +31,10 @@ export const ImportPreview: React.FC<{
         >
           {date.formatDate(note.date_published!, undefined)}
         </time>
-        {!!note.tags?.filter((tag) => tag !== "post" && tag !== "page")
-          .length && (
+        {!!note.tags?.filter((tag) => !RESERVED_TAGS.includes(tag)).length && (
           <span className="xlog-post-tags space-x-1 truncate min-w-0">
             {note.tags
-              ?.filter((tag) => tag !== "post" && tag !== "page")
+              ?.filter((tag) => !RESERVED_TAGS.includes(tag))
               .map((tag) => (
                 <span className="hover:text-zinc-600" key={tag}>
                   #{tag}
@@ -45,14 +49,18 @@ export const ImportPreview: React.FC<{
         }`}
       >
         <div
-          className={`absolute bottom-0 h-20 left-0 right-0 bg-gradient-to-t from-white via-white z-40 flex items-end justify-center font-bold cursor-pointer ${
-            showcaseMore ? "hidden" : ""
-          }`}
+          className={cn(
+            "absolute bottom-0 h-20 inset-x-0 bg-gradient-to-t from-white via-white z-40 flex items-end justify-center font-bold cursor-pointer",
+            showcaseMore && "hidden",
+          )}
           onClick={() => setShowcaseMore(true)}
         >
           {t("Show more")}
         </div>
-        <PageContent className="mt-4" content={note?.content}></PageContent>
+        <DynamicMarkdownContent
+          className="mt-4"
+          content={note?.content}
+        ></DynamicMarkdownContent>
       </div>
     </article>
   )

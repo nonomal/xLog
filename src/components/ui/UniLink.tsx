@@ -1,12 +1,21 @@
 import Link from "next/link"
 
-export const UniLink: React.FC<{
+export type UniLinkProps = {
   href?: string
   onClick?: () => void
   children: React.ReactNode
   className?: string
   target?: string
-}> = ({ href, onClick, children, className, target, ...props }) => {
+}
+
+export const UniLink = ({
+  href,
+  onClick,
+  children,
+  className,
+  target,
+  ...props
+}: UniLinkProps) => {
   if (onClick) {
     return (
       <button className={className} onClick={onClick} {...props}>
@@ -16,13 +25,22 @@ export const UniLink: React.FC<{
   }
 
   if (!href) {
-    return <span className={className}>{children}</span>
+    return (
+      <span className={className} {...props}>
+        {children}
+      </span>
+    )
   }
 
   const isExternal =
-    href && (/^https?:\/\//.test(href) || href.startsWith("/feed"))
+    (href && (/^https?:\/\//.test(href) || href.startsWith("/feed"))) ||
+    href.startsWith("mailto:")
 
-  if (isExternal) {
+  const isInModal =
+    typeof window !== "undefined" &&
+    window.location.pathname.startsWith("/post/")
+
+  if (isExternal || isInModal) {
     return (
       <a
         {...props}
